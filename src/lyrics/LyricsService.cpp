@@ -30,6 +30,9 @@
 namespace {
 
 constexpr qint64 kMissingRetryMs = 3LL * 24 * 3600 * 1000;   // missing lyrics are checked again after 3 days
+// Everplay 0.25.0 (2026-11-07 00:35 UTC) replaced whisper with forced alignment but didn't yet mark its results:
+// timing stored without a mark before then is whisper's.
+constexpr qint64 kAlignerSinceMs = 1794011716000LL;
 
 // Lyrics from the file: first an .lrc next to the track (may have timestamps), then the LYRICS / UNSYNCEDLYRICS tag.
 // Runs on a worker thread.
@@ -263,7 +266,7 @@ void LyricsService::fetch()
     }
 
     Lyrics cached;
-    if (loadCached(m_track.id, cached)) {
+    if (loadCached(m_track.id, cached, &m_cachedAt)) {
         if (cached.isEmpty()) {
             setState(QStringLiteral("missing"));
         } else {
@@ -347,10 +350,33 @@ void LyricsService::withLrcLib(quint64 serial, const Lyrics &best, const QString
                    [this, serial, best, error](const Lyrics &lrc) {
         if (serial != m_serial)
             return;
-        if (lrc.synced || best.isEmpty())
-            finish(lrc, lrc.isEmpty() ? error : QString());
-        else
+        if (lrc.synced || (best.isEmpty() && !lrc.isEmpty()))
+            finish(lrc, QString());
+        else if (!best.isEmpty())
             finish(best, error);
+        else
+            withWebSearch(serial, error);
+    });
+}
+
+void LyricsService::withWebSearch(quint64 serial, const QString &error)
+{
+    // Still nothing: lyrics sites and the description of the upload, before anyone has to recognize the
+    // singing.
+    LyricsSearch::Query query;
+    query.artist = m_track.artist;
+    query.title = m_track.title;
+    query.durationSec = m_track.duration;
+    if (m_track.source == QLatin1String("youtube"))
+        query.videoId = m_track.path;
+    else if (m_track.source == QLatin1String("spotify"))
+        query.videoId = SpotifyService::instance()->matchedVideoId(m_track.id);
+    else if (m_track.source == QLatin1String("soundcloud"))
+        query.soundCloudId = m_track.id;
+    m_search.fetch(query, [this, serial, error](const Lyrics &found) {
+        if (serial != m_serial)
+            return;
+        finish(found, found.isEmpty() ? error : QString());
     });
 }
 
@@ -371,6 +397,7 @@ void LyricsService::finish(const Lyrics &lyrics, const QString &error)
 void LyricsService::apply(const Lyrics &lyrics, bool store)
 {
     m_lyrics = lyrics;
+    m_whisperMade = isWhisperMade(lyrics, store ? QDateTime::currentMSecsSinceEpoch() : m_cachedAt);
     if (m_lyrics.synced)
         m_lyrics.fillEnds(m_track.duration > 0 ? qint64(m_track.duration) * 1000 : -1);
     if (store && m_hasTrack)
@@ -528,6 +555,7 @@ void LyricsService::startAlign(const QUrl &audio)
         }
         Lyrics aligned = r.lyrics;
         aligned.source = base.source;
+        aligned.engine = QStringLiteral("aligner");
         apply(aligned, true);
         emit notice(tr("Aligned the lyrics timing"), QStringLiteral("check"));
     });
@@ -567,6 +595,7 @@ void LyricsService::startWordTiming(const QUrl &audio)
             if (std::abs(shifts[shifts.size() / 2]) > 1500) {
                 Lyrics retimed = r.lyrics;
                 retimed.source = base.source;
+                retimed.engine = QStringLiteral("aligner");
                 apply(retimed, true);
                 resetOffset();
                 emit notice(tr("These lyrics were timed for another version of the track — timed them to this recording"),
@@ -601,6 +630,7 @@ void LyricsService::startWordTiming(const QUrl &audio)
             return;
         }
         timed.wordTimed = true;
+        timed.engine = QStringLiteral("aligner");
         apply(timed, true);
         emit notice(tr("Timed every word"), QStringLiteral("check"));
     });
@@ -651,6 +681,7 @@ void LyricsService::startRecognize(const QUrl &audio)
             return;
         }
         recognized.source = tr("Recognized automatically (test feature), may contain mistakes");
+        recognized.engine = QStringLiteral("whisper");
         apply(recognized, true);
         setState(QStringLiteral("ready"));
         emit notice(tr("Recognized the lyrics (test feature)"), QStringLiteral("check"));
@@ -667,6 +698,74 @@ void LyricsService::cancelAlign()
     emit alignChanged();
 }
 
+// ---- whisper results ------------------------------------------------------------
+
+bool LyricsService::isWhisperMade(const Lyrics &lyrics, qint64 storedAtMs)
+{
+    if (lyrics.origin == QLatin1String("stt-text"))
+        return true;
+    if (lyrics.origin != QLatin1String("stt") && !lyrics.wordTimed)
+        return false;
+    return lyrics.engine == QLatin1String("whisper") || (lyrics.engine.isEmpty() && storedAtMs < kAlignerSinceMs);
+}
+
+namespace {
+
+// The cache files with whisper's results; removes them when `remove`.
+int scanWhisperLyrics(const QString &dir, bool remove)
+{
+    int n = 0;
+    for (const QFileInfo &fi : QDir(dir).entryInfoList({ QStringLiteral("*.json") }, QDir::Files)) {
+        QFile f(fi.filePath());
+        if (!f.open(QIODevice::ReadOnly))
+            continue;
+        const QJsonObject o = QJsonDocument::fromJson(f.readAll()).object();
+        f.close();
+        if (!LyricsService::isWhisperMadeEntry(o))
+            continue;
+        ++n;
+        if (remove)
+            QFile::remove(fi.filePath());
+    }
+    return n;
+}
+
+} // namespace
+
+bool LyricsService::isWhisperMadeEntry(const QJsonObject &entry)
+{
+    return isWhisperMade(Lyrics::fromJson(entry), qint64(entry.value("fetched").toDouble()));
+}
+
+void LyricsService::countWhisperLyrics()
+{
+    const QString dir = AppPaths::dataDir() + QStringLiteral("/lyrics");
+    auto *watcher = new QFutureWatcher<int>(this);
+    connect(watcher, &QFutureWatcher<int>::finished, this, [this, watcher] {
+        watcher->deleteLater();
+        m_whisperCount = watcher->result();
+        emit whisperLyricsChanged();
+    });
+    watcher->setFuture(QtConcurrent::run(scanWhisperLyrics, dir, false));
+}
+
+void LyricsService::removeWhisperLyrics()
+{
+    const QString dir = AppPaths::dataDir() + QStringLiteral("/lyrics");
+    auto *watcher = new QFutureWatcher<int>(this);
+    connect(watcher, &QFutureWatcher<int>::finished, this, [this, watcher] {
+        watcher->deleteLater();
+        const int removed = watcher->result();
+        m_whisperCount = 0;
+        emit whisperLyricsChanged();
+        emit notice(tr("Removed lyrics made by speech recognition from %n track(s)", "", removed), QStringLiteral("check"));
+        // The track playing now gets its lyrics again (and new timing, if automatic timing is on).
+        if (m_hasTrack && m_whisperMade)
+            retry();
+    });
+    watcher->setFuture(QtConcurrent::run(scanWhisperLyrics, dir, true));
+}
+
 // ---- cache ----------------------------------------------------------------------
 
 QString LyricsService::cachePath(const QString &trackId) const
@@ -677,7 +776,7 @@ QString LyricsService::cachePath(const QString &trackId) const
            + QStringLiteral(".json");
 }
 
-bool LyricsService::loadCached(const QString &trackId, Lyrics &out) const
+bool LyricsService::loadCached(const QString &trackId, Lyrics &out, qint64 *storedAt) const
 {
     QFile f(cachePath(trackId));
     if (!f.open(QIODevice::ReadOnly))
@@ -686,12 +785,14 @@ bool LyricsService::loadCached(const QString &trackId, Lyrics &out) const
     if (o.value("id").toString() != trackId)
         return false;
     out = Lyrics::fromJson(o);
+    if (storedAt)
+        *storedAt = qint64(o.value("fetched").toDouble());
     // Before cache version 2, signed-in users got YouTube lyrics without timing (the Android request carried
     // the website's cookies) — those are fetched again once.
     if (o.value("v").toInt() < 2 && !out.synced && out.origin == QLatin1String("youtube"))
         return false;
-    // Version 3 added LRCLIB: "missing" from before is checked again.
-    if (o.value("v").toInt() < 3 && out.isEmpty())
+    // Version 3 added LRCLIB, version 4 lyrics sites and descriptions: "missing" from before is checked again.
+    if (o.value("v").toInt() < 4 && out.isEmpty())
         return false;
     // YouTube lyrics stored as "synced" without real times (all lines at 0:00) are fetched again — they're
     // plain lyrics, so LRCLIB gets a chance to give timed ones.
@@ -709,7 +810,7 @@ void LyricsService::storeCached(const QString &trackId, const Lyrics &lyrics) co
 {
     QJsonObject o = lyrics.toJson();
     o.insert("id", trackId);
-    o.insert("v", 3);
+    o.insert("v", 4);
     o.insert("fetched", double(QDateTime::currentMSecsSinceEpoch()));
     QSaveFile f(cachePath(trackId));
     if (f.open(QIODevice::WriteOnly)) {

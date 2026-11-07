@@ -689,6 +689,19 @@ Item {
                         }
                     }
                 }
+                // Results of whisper, which recognized the singing before forced alignment
+                SettingRow {
+                    visible: Lyrics.whisperLyricsCount > 0
+                    icon: "refresh"
+                    title: qsTr("Lyrics from the old speech recognition")
+                    description: qsTr("%n track(s) have lyrics recognized by whisper or timing made by it, often with mistakes. Remove them: the lyrics are looked up again, and with automatic timing on, timed anew.", "", Lyrics.whisperLyricsCount)
+                    Component.onCompleted: Lyrics.countWhisperLyrics()
+                    PillButton {
+                        kind: "ghost"
+                        text: qsTr("Remove")
+                        onClicked: Lyrics.removeWhisperLyrics()
+                    }
+                }
             }
         }
 

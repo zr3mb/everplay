@@ -35,6 +35,9 @@ struct Lyrics
     QString source;         // e.g. "Source: LyricFind" (footer from YouTube Music)
     QString origin;         // "youtube" | "local" | "stt" (timing aligned by speech recognition) | "stt-text" (recognized)
     bool wordTimed = false; // the words' times come from speech recognition, not an estimate
+    // What made the "stt" timing or the "stt-text" lyrics: "aligner" (forced alignment, from 0.25.1 on),
+    // "whisper" (speech recognition); empty in older entries.
+    QString engine;
 
     bool isEmpty() const;
     int wordCount() const;

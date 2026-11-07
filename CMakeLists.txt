@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(Everplay VERSION 0.25.0 LANGUAGES CXX)
+project(Everplay VERSION 0.26.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -69,6 +69,7 @@ qt_add_qml_module(Everplay
         src/youtube/YouTubeService.h  src/youtube/YouTubeService.cpp
         src/lyrics/Lyrics.h           src/lyrics/Lyrics.cpp
         src/lyrics/LrcLib.h           src/lyrics/LrcLib.cpp
+        src/lyrics/LyricsSearch.h     src/lyrics/LyricsSearch.cpp
         src/lyrics/LyricsAligner.h    src/lyrics/LyricsAligner.cpp
         src/lyrics/SpeechEngine.h     src/lyrics/SpeechEngine.cpp
         src/lyrics/LyricsService.h    src/lyrics/LyricsService.cpp

@@ -40,7 +40,10 @@ QJsonObject Lyrics::toJson() const
         }
         arr.append(line);
     }
-    return { { "lines", arr }, { "synced", synced }, { "source", source }, { "origin", origin }, { "wordTimed", wordTimed } };
+    QJsonObject o { { "lines", arr }, { "synced", synced }, { "source", source }, { "origin", origin }, { "wordTimed", wordTimed } };
+    if (!engine.isEmpty())
+        o.insert("engine", engine);
+    return o;
 }
 
 Lyrics Lyrics::fromJson(const QJsonObject &o)
@@ -59,6 +62,7 @@ Lyrics Lyrics::fromJson(const QJsonObject &o)
     out.synced = o.value("synced").toBool();
     out.source = o.value("source").toString();
     out.origin = o.value("origin").toString();
+    out.engine = o.value("engine").toString();
     return out;
 }
 

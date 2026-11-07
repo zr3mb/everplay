@@ -90,6 +90,9 @@ public:
     void setTrackColors(const QString &trackId, const QColor &a, const QColor &b);
     // The stream of "sc:<id>" (StreamResolver hands these here).
     void resolveStream(const QString &trackId, std::function<void(const QUrl &url, const QString &error)> done);
+    // The track's description on SoundCloud ("" when there is none or it can't be fetched): artists often
+    // put the lyrics there.
+    void fetchDescription(const QString &trackId, std::function<void(const QString &description)> done);
 
 signals:
     void accountChanged();

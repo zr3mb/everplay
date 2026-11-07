@@ -450,7 +450,8 @@ Item {
     readonly property var alignSteps: {
         const log = () => console.log("tour: align", Player.title, "| state", Lyrics.state, "| synced", Lyrics.synced, "| canAlign", Lyrics.canAlign,
                                       "| aligning", Lyrics.aligning, Math.round(Lyrics.alignProgress * 100) + "%", Lyrics.alignStage,
-                                      "| lines", Lyrics.lines.length, "| words timed", Lyrics.wordTimed, "| separates", Lyrics.sttSeparates)
+                                      "| lines", Lyrics.lines.length, "| words timed", Lyrics.wordTimed, "| separates", Lyrics.sttSeparates,
+                                      "| source", Lyrics.source, "| whisper", Lyrics.madeByWhisper, Lyrics.whisperLyricsCount)
         const s = [
             ...root.sttDownloadSteps,
             { name: "A1-search", run: () => { Nav.finishOnboarding(); Player.muted = true; Nav.navigate("search", { query: root.alignQuery.split("@")[0], filter: 2 }) } },
@@ -464,17 +465,23 @@ Item {
                 if (pick) Player.playFrom(r, pick, "search")
             } },
             { name: "A4-wait", run: log },
-            { name: "A5-align", run: () => { log(); Nav.immersive = true; if (Lyrics.canAlign) Lyrics.alignNow(); else Lyrics.timeWordsNow() } }
+            // Lyrics made by whisper are removed first (they're looked up again, then aligned below).
+            { name: "A5-align", run: () => {
+                log(); Nav.immersive = true
+                if (Lyrics.madeByWhisper) Lyrics.removeWhisperLyrics()
+                else if (Lyrics.canAlign) Lyrics.alignNow()
+                else Lyrics.timeWordsNow()
+            } }
         ]
         for (let i = 0; i < 80; ++i)
-            s.push({ name: "A6-wait" + i, run: log })
+            s.push({ name: "A6-wait" + i, run: () => { log(); if (Lyrics.canAlign && !Lyrics.aligning) Lyrics.alignNow() } })
         s.push({ name: "A7-lines", run: () => {
             log()
             for (const l of Lyrics.lines)
                 console.log("tour: line", l.start.toFixed(1), l.end.toFixed(1), l.words.length, l.text)
         } })
         // The timing settings as they look now
-        s.push({ name: "A8-settings", run: () => { Player.pause(); Nav.immersive = false; Nav.navigate("settings") } })
+        s.push({ name: "A8-settings", run: () => { Player.pause(); Nav.immersive = false; Nav.navigate("settings"); Lyrics.countWhisperLyrics() } })
         for (const y of [1600, 2000, 2400, 2800])
             s.push({ name: "A9-settings-" + y, run: () => root.scrollPage(y) })
         return s
