@@ -737,6 +737,13 @@ void SoundCloudService::resolveStream(const QString &trackId, std::function<void
     });
 }
 
+void SoundCloudService::fetchDescription(const QString &trackId, std::function<void(const QString &)> done)
+{
+    get(QStringLiteral("/tracks/") + numericId(trackId), {}, [done](const QJsonValue &json, const QString &error) {
+        done(error.isEmpty() ? json.toObject().value("description").toString() : QString());
+    });
+}
+
 // ---- search ---------------------------------------------------------------------
 
 void SoundCloudService::search(const QString &query)

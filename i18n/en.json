@@ -103,5 +103,13 @@
   "Add %n tracks": [
     "Add %n track",
     "Add %n tracks"
+  ],
+  "%n track(s) have lyrics recognized by whisper or timing made by it, often with mistakes. Remove them: the lyrics are looked up again, and with automatic timing on, timed anew.": [
+    "%n track has lyrics recognized by whisper or timing made by it, often with mistakes. Remove them: the lyrics are looked up again, and with automatic timing on, timed anew.",
+    "%n tracks have lyrics recognized by whisper or timing made by it, often with mistakes. Remove them: the lyrics are looked up again, and with automatic timing on, timed anew."
+  ],
+  "Removed lyrics made by speech recognition from %n track(s)": [
+    "Removed lyrics made by speech recognition from %n track",
+    "Removed lyrics made by speech recognition from %n tracks"
   ]
 }

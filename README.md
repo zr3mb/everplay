@@ -472,8 +472,22 @@ first.
      lookup by artist, cleaned title, album and duration (±2 s), then a search where timed lyrics and the closest
      duration (±12 s) win. Its timed lyrics replace plain text; its plain text is used only when nothing else was
      found. Works for YouTube, Spotify and local tracks.
-- **Cache:** `lyrics\<sha1>.json` in the data directory. Missing lyrics are remembered for 3 days. Cache version 3:
-  older "missing" entries and untimed YouTube lyrics are fetched again once.
+  4. **Lyrics sites and descriptions** (`LyricsSearch`) — when there are still no lyrics at all. All at once:
+     [NetEase Cloud Music](https://music.163.com) (timed LRC, kept timed only when the duration matches within
+     3 s), [Tekstowo.pl](https://www.tekstowo.pl), [Genius](https://genius.com), [lyrics.ovh](https://lyrics.ovh)
+     and the description of the YouTube video or SoundCloud track (the longest block of short lines without
+     links, hashtags or credits). Timed lyrics win, then the sites in that order, the description last. A result
+     must name the same artist and title; titles of re-uploads are cleaned first ("slowed + reverb", "[33Hz]",
+     "Rebassed by…", "prod."), and an "Artist - Title" upload title is tried before the channel's name.
+     Section headers ("[Chorus]", "Refren:") become verse breaks. Only after this does the lyrics panel offer
+     to recognize the lyrics from the recording.
+- **Cache:** `lyrics\<sha1>.json` in the data directory. Missing lyrics are remembered for 3 days. Cache version 4:
+  older "missing" entries are fetched again once (version 3 did the same for LRCLIB, and also refetched untimed
+  YouTube lyrics).
+- **Results of whisper** (recognized lyrics, and timing made before 0.25.0 replaced whisper with forced
+  alignment) can be removed: one track at a time under its lyrics, or all at once in *Settings → Lyrics*.
+  An entry made by the aligner carries `"engine": "aligner"`; unmarked timing stored before 0.25.0's release
+  counts as whisper's.
 
 ### Automatic timing (alpha)
 

@@ -370,6 +370,16 @@ Item {
             implicitHeight: 26
             onClicked: Lyrics.timeWordsNow()
         }
+        // Lyrics or timing from whisper (before forced alignment): often wrong, so they can go.
+        PillButton {
+            visible: Lyrics.madeByWhisper && !Lyrics.aligning
+            kind: "ghost"
+            icon: "refresh"
+            text: Lyrics.origin === "stt-text" ? qsTr("Remove the recognized lyrics") : qsTr("Remove the old timing")
+            fontSize: 11
+            implicitHeight: 26
+            onClicked: Lyrics.retry()
+        }
 
         Text {
             Layout.fillWidth: true

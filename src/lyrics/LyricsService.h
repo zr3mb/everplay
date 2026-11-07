@@ -1,6 +1,7 @@
 #pragma once
 
 #include "LrcLib.h"
+#include "LyricsSearch.h"
 #include "Lyrics.h"
 #include "SpeechEngine.h"
 #include "TrackModel.h"
@@ -48,6 +49,11 @@ class LyricsService : public QObject
     // Synced lyrics whose words only have estimated times: alignment can time every word.
     Q_PROPERTY(bool canTimeWords READ canTimeWords NOTIFY alignChanged)
     Q_PROPERTY(bool wordTimed READ wordTimed NOTIFY lyricsChanged)
+    // The lyrics (recognized text) or their timing come from whisper speech recognition, which made many
+    // mistakes: they can be removed and fetched again.
+    Q_PROPERTY(bool madeByWhisper READ madeByWhisper NOTIFY lyricsChanged)
+    // How many tracks in the cache have such lyrics (-1 = not counted yet; countWhisperLyrics()).
+    Q_PROPERTY(int whisperLyricsCount READ whisperLyricsCount NOTIFY whisperLyricsChanged)
 
     Q_PROPERTY(bool autoAlign READ autoAlign WRITE setAutoAlign NOTIFY settingsChanged)
     // The current line lights up letter by letter (off: the whole line at once, no word timing).
@@ -102,6 +108,8 @@ public:
     bool recognizing() const { return aligning() && m_mode == Recognize; }
     bool canTimeWords() const;
     bool wordTimed() const { return m_lyrics.wordTimed; }
+    bool madeByWhisper() const { return m_whisperMade; }
+    int whisperLyricsCount() const { return m_whisperCount; }
 
     bool autoAlign() const { return m_autoAlign && hardwareOk(); }
     void setAutoAlign(bool on);
@@ -150,12 +158,19 @@ public:
     Q_INVOKABLE void transcribeNow();
     Q_INVOKABLE void timeWordsNow();
     Q_INVOKABLE void cancelAlign();
+    Q_INVOKABLE void countWhisperLyrics();
+    // Deletes every cached result of whisper (recognized lyrics, timing); those tracks are fetched again.
+    Q_INVOKABLE void removeWhisperLyrics();
     Q_INVOKABLE void downloadSttComponents() { m_speech.downloadComponents(); }
     Q_INVOKABLE void removeSttComponents() { m_speech.removeComponents(); }
     Q_INVOKABLE void redetectStt() { m_speech.detect(); }
     Q_INVOKABLE void downloadSttModel() { m_speech.downloadModel(m_model); }
     Q_INVOKABLE void cancelSttDownload() { m_speech.cancelDownload(); }
     Q_INVOKABLE void removeSttModel(const QString &model) { m_speech.removeModel(model); }
+
+    // A cache entry (or lyrics stored at that time) made by whisper speech recognition.
+    static bool isWhisperMade(const Lyrics &lyrics, qint64 storedAtMs);
+    static bool isWhisperMadeEntry(const QJsonObject &entry);
 
     // Called by the player when the track changes (nullptr = nothing playing).
     void setTrack(const Track *track);
@@ -166,6 +181,7 @@ signals:
     void alignChanged();
     void settingsChanged();
     void sttChanged();
+    void whisperLyricsChanged();
     void notice(const QString &text, const QString &icon);
 
 private:
@@ -175,6 +191,7 @@ private:
     void fetchYouTube(const QString &videoId, quint64 serial, std::function<void(const Lyrics &, const QString &)> done);
     void fetchLocal(quint64 serial, const Lyrics &fromYouTube, const QString &ytError);
     void withLrcLib(quint64 serial, const Lyrics &best, const QString &error);   // LRCLIB when no timing yet
+    void withWebSearch(quint64 serial, const QString &error);                    // lyrics sites when nothing yet
     void finish(const Lyrics &lyrics, const QString &error);
     void apply(const Lyrics &lyrics, bool store);
     void setState(const QString &state, const QString &error = {});
@@ -193,10 +210,11 @@ private:
     QString cachePath(const QString &trackId) const;
     QString offsetKey() const;
     void loadOffset();
-    bool loadCached(const QString &trackId, Lyrics &out) const;
+    bool loadCached(const QString &trackId, Lyrics &out, qint64 *storedAt = nullptr) const;
     void storeCached(const QString &trackId, const Lyrics &lyrics) const;
 
     LrcLib m_lrclib;
+    LyricsSearch m_search;
     SpeechEngine m_speech;
     SpeechEngine::Hardware m_hardware;
 
@@ -215,6 +233,10 @@ private:
     QString m_alignStage;
     QHash<QString, bool> m_alignTried;   // tracks for which recognition has already failed this session
     SpeechMode m_mode = Align;
+
+    bool m_whisperMade = false;
+    qint64 m_cachedAt = 0;      // when the lyrics being applied from the cache were stored
+    int m_whisperCount = -1;
 
     bool m_autoAlign = false;
     bool m_karaoke = true;
