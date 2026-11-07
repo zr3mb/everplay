@@ -5,6 +5,7 @@
 #include <QSet>
 
 #include <algorithm>
+#include <optional>
 
 bool Lyrics::isEmpty() const
 {
@@ -66,10 +67,185 @@ Lyrics Lyrics::fromJson(const QJsonObject &o)
     return out;
 }
 
-Lyrics Lyrics::fromPlainText(const QString &text)
+namespace {
+
+// "x2", "(2x)", "[x3]", "*2", "2 razy" — how many times something is sung; 0 when the text isn't a mark.
+int repeatMark(const QString &text)
+{
+    static const QRegularExpression mark(
+        QStringLiteral("^[\\[\\(]?\\s*(?:x\\s?(\\d)|(\\d)\\s?(?:x|razy)|\\*\\s?(\\d))\\s*[\\]\\)]?\\s*:?$"),
+        QRegularExpression::CaseInsensitiveOption);
+    const auto m = mark.match(text.trimmed());
+    if (!m.hasMatch())
+        return 0;
+    const int n = (m.captured(1) + m.captured(2) + m.captured(3)).toInt();
+    return n >= 2 && n <= 8 ? n : 0;
+}
+
+struct SectionHeader
+{
+    bool chorus = false;
+    int times = 1;
+    QString sung;   // lyrics written on the header's own line ("Ref.: <the first line>")
+};
+
+std::optional<SectionHeader> sectionHeader(const QString &line)
+{
+    static const QRegularExpression named(
+        QStringLiteral("^[\\[\\(]?\\s*(pre-?chorus|post-?chorus|chorus|refrain|refren|ref|hook|verse|zwrotka|intro|outro|"
+                       "bridge|interlude|przej[sś]cie|przedrefren|tekst|lyrics|s[lł]owa|instrumental)\\.?\\s*\\d*\\.?"
+                       "\\s*([\\[\\(]?\\s*(?:x\\s?\\d|\\d\\s?x)\\s*[\\]\\)]?)?\\s*[\\]\\)]?\\s*(?:[:：\\-–]\\s*(.*))?$"),
+        QRegularExpression::CaseInsensitiveOption);
+    static const QRegularExpression bracketed(QStringLiteral("^\\[[^\\]]*\\]$"));
+    static const QRegularExpression chorusWord(QStringLiteral("chorus|refrain|refren|\\bref\\b|hook"),
+                                               QRegularExpression::CaseInsensitiveOption);
+    static const QRegularExpression inlineMark(QStringLiteral("\\b(?:x\\s?(\\d)|(\\d)\\s?x)\\b"),
+                                               QRegularExpression::CaseInsensitiveOption);
+    const QString t = line.trimmed();
+    SectionHeader h;
+    if (const auto m = named.match(t); m.hasMatch()) {
+        const QString name = m.captured(1).toLower();
+        h.chorus = name == u"chorus" || name == u"refrain" || name == u"refren" || name == u"ref" || name == u"hook";
+        if (const int n = repeatMark(m.captured(2)))
+            h.times = n;
+        QString rest = m.captured(3).trimmed();
+        while (rest.endsWith(QChar(']')) || rest.endsWith(QChar(')')))
+            rest.chop(1);
+        rest = rest.trimmed();
+        if (const int n = repeatMark(rest))
+            h.times = n;
+        else if (rest.split(QChar(' '), Qt::SkipEmptyParts).size() >= 4)
+            h.sung = rest;   // a short rest names who sings it, a longer one is sung
+        return h;
+    }
+    if (bracketed.match(t).hasMatch()) {
+        h.chorus = chorusWord.match(t).hasMatch();
+        if (const auto m = inlineMark.match(t); m.hasMatch())
+            h.times = std::clamp((m.captured(1) + m.captured(2)).toInt(), 1, 8);
+        return h;
+    }
+    return std::nullopt;
+}
+
+// Guitar chords written over or after the words ("Am  C  G", "<a line>     E     gis").
+bool isChord(const QString &token)
+{
+    static const QRegularExpression chord(
+        QStringLiteral("^[A-Ha-h](?:is|es|#|b)?(?:m|maj|min|dim|aug|sus)?\\d{0,2}(?:/[A-Ha-h](?:is|es|#|b)?)?$"));
+    return chord.match(token).hasMatch();
+}
+
+QString dropChords(const QString &line)
+{
+    const QStringList tokens = line.split(QChar(' '), Qt::SkipEmptyParts);
+    if (tokens.isEmpty())
+        return line;
+    const bool allChords = std::all_of(tokens.cbegin(), tokens.cend(), isChord);
+    if (allChords && (tokens.size() >= 2 || tokens.first().size() >= 2))
+        return {};
+    // Chords after the words are set apart by a wide gap.
+    static const QRegularExpression tail(QStringLiteral("^(.*?\\S)\\s{3,}(\\S.*)$"));
+    if (const auto m = tail.match(line); m.hasMatch()) {
+        const QStringList after = m.captured(2).split(QChar(' '), Qt::SkipEmptyParts);
+        if (std::all_of(after.cbegin(), after.cend(), isChord))
+            return m.captured(1);
+    }
+    return line;
+}
+
+} // namespace
+
+bool Lyrics::isSectionHeader(const QString &line)
+{
+    return sectionHeader(line).has_value();
+}
+
+QString Lyrics::tidyText(const QString &text)
+{
+    static const QRegularExpression lineMark(
+        QStringLiteral("^(.*\\S)\\s+[\\[\\(]?\\s*(?:x\\s?(\\d)|(\\d)\\s?(?:x|razy)|\\*\\s?(\\d))\\s*[\\]\\)]?$"),
+        QRegularExpression::CaseInsensitiveOption);
+
+    struct Stanza
+    {
+        bool headed = false;
+        bool chorus = false;
+        int times = 1;
+        QStringList lines;
+    };
+    QStringList out, chorusLines, lastLines;
+    Stanza cur;
+    auto close = [&] {
+        if (!cur.headed && cur.lines.isEmpty())
+            return;
+        QStringList lines = cur.lines;
+        if (cur.chorus) {
+            if (lines.isEmpty())
+                lines = chorusLines;   // "Ref." alone: the chorus as written the first time
+            else if (chorusLines.isEmpty())
+                chorusLines = lines;
+        }
+        if (!lines.isEmpty()) {
+            for (int i = 0; i < cur.times; ++i)
+                out << lines;
+            out << QString();
+            lastLines = lines;
+        }
+        cur = Stanza();
+    };
+
+    QString normalized = text;
+    normalized.replace(QStringLiteral("\r\n"), QStringLiteral("\n")).replace(QChar('\r'), QChar('\n'));
+    for (const QString &raw : normalized.split(QChar('\n'))) {
+        const QString trimmed = raw.trimmed();
+        const QString line = dropChords(trimmed);
+        if (line.isEmpty() && !trimmed.isEmpty())
+            continue;   // a line of chords
+        if (line.isEmpty()) {
+            // A header alone before a blank line: a chorus named again, or a part whose words come after the gap.
+            if (cur.headed && cur.lines.isEmpty() && !(cur.chorus && !chorusLines.isEmpty()))
+                continue;
+            close();
+            continue;
+        }
+        if (const int n = repeatMark(line)) {
+            // Under a verse: the verse is sung n times; after a gap, the verse before it.
+            if (!cur.lines.isEmpty() || cur.headed) {
+                cur.times = n;
+            } else if (!lastLines.isEmpty()) {
+                if (!out.isEmpty() && out.last().isEmpty())
+                    out.removeLast();
+                for (int i = 1; i < n; ++i)
+                    out << lastLines;
+                out << QString();
+            }
+            continue;
+        }
+        if (const auto h = sectionHeader(line)) {
+            close();
+            cur.headed = true;
+            cur.chorus = h->chorus;
+            cur.times = h->times;
+            if (!h->sung.isEmpty())
+                cur.lines << h->sung;
+            continue;
+        }
+        if (const auto m = lineMark.match(line); m.hasMatch()) {
+            const int n = std::clamp((m.captured(2) + m.captured(3) + m.captured(4)).toInt(), 1, 8);
+            for (int i = 0; i < n; ++i)
+                cur.lines << m.captured(1);
+            continue;
+        }
+        cur.lines << line;
+    }
+    close();
+    return out.join(QChar('\n'));
+}
+
+Lyrics Lyrics::fromPlainText(const QString &text, bool tidy)
 {
     Lyrics out;
-    QString normalized = text;
+    QString normalized = tidy ? tidyText(text) : text;
     normalized.replace(QStringLiteral("\r\n"), QStringLiteral("\n")).replace(QChar('\r'), QChar('\n'));
     bool lastEmpty = true;   // no empty lines at the start and no double breaks
     for (const QString &raw : normalized.split(QChar('\n'))) {

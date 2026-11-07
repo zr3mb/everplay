@@ -794,6 +794,15 @@ bool LyricsService::loadCached(const QString &trackId, Lyrics &out, qint64 *stor
     // Version 3 added LRCLIB, version 4 lyrics sites and descriptions: "missing" from before is checked again.
     if (o.value("v").toInt() < 4 && out.isEmpty())
         return false;
+    // Before version 5 plain lyrics kept section headers ("[Chorus]", "Ref.") and repeat marks as sung lines,
+    // and a chorus only named again wasn't written out — timing made from such a text drifts. Those are
+    // fetched (and timed) again.
+    if (o.value("v").toInt() < 5 && !out.isEmpty() && (!out.synced || out.origin == QLatin1String("stt"))
+        && out.origin != QLatin1String("stt-text")) {
+        const QString text = out.plainText();
+        if (Lyrics::fromPlainText(text).plainText() != Lyrics::fromPlainText(text, false).plainText())
+            return false;
+    }
     // YouTube lyrics stored as "synced" without real times (all lines at 0:00) are fetched again — they're
     // plain lyrics, so LRCLIB gets a chance to give timed ones.
     if (out.synced && !out.hasRealTiming())
@@ -810,7 +819,7 @@ void LyricsService::storeCached(const QString &trackId, const Lyrics &lyrics) co
 {
     QJsonObject o = lyrics.toJson();
     o.insert("id", trackId);
-    o.insert("v", 4);
+    o.insert("v", 5);
     o.insert("fetched", double(QDateTime::currentMSecsSinceEpoch()));
     QSaveFile f(cachePath(trackId));
     if (f.open(QIODevice::WriteOnly)) {
