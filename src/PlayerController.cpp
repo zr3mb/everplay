@@ -26,6 +26,7 @@
 #  include "platform/WindowsMediaControls.h"
 #endif
 
+#include <QAudioDevice>
 #include <QAudioFormat>
 #include <QBuffer>
 #include <QDataStream>
@@ -68,6 +69,12 @@ PlayerController::PlayerController(QObject *parent)
     // sound takes a separate path: samples -> mixer -> equalizer -> AudioEngine (QAudioSink).
     for (int d = 0; d < AudioEngine::kDecks; ++d)
         setupDeck(d);
+    // The muted outputs follow the sound to a new device: one left on an unplugged device would stop
+    // its deck's clock, and with it the playback.
+    connect(&m_engine, &AudioEngine::outputDeviceChanged, this, [this] {
+        for (Deck &deck : m_decks)
+            deck.clock->setDevice(m_engine.outputDevice());
+    });
 
     connect(&m_cache, &AudioCache::changed, this, [this] {
         ++m_cacheRevision;
@@ -217,7 +224,7 @@ void PlayerController::setupDeck(int d)
 {
     Deck &deck = m_decks[d];
     deck.player = new QMediaPlayer(this);
-    deck.clock = new QAudioOutput(this);
+    deck.clock = new QAudioOutput(m_engine.outputDevice(), this);
     deck.clock->setVolume(0.0f);
     deck.player->setAudioOutput(deck.clock);
     deck.buffers = new QAudioBufferOutput(m_engine.bufferFormat(), this);
@@ -662,6 +669,11 @@ StreamFetch *PlayerController::takeAhead(const QString &videoId, const QUrl &url
     }
     fetch->continueAll();
     return fetch;
+}
+
+QString PlayerController::outputDeviceName() const
+{
+    return m_engine.outputDevice().description();
 }
 
 bool PlayerController::cached(int row) const

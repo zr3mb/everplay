@@ -311,7 +311,10 @@ Appearance and layout settings (`[ui]` in `settings.ini`) are remembered between
   Seeking, "next" or pause during a transition are handled (the transition ends at once).
 - The sound never waits for the GUI thread: the decoders' samples are mixed and equalized on the decoders' own
   threads (connected directly), and the audio sink pulls from the ring buffer (~200 ms cushion) on a thread of its
-  own — dragging the window's edge, which re-lays the interface out for every step, used to cut the sound. The UI
+  own — dragging the window's edge, which re-lays the interface out for every step, used to cut the sound.
+  The sink follows the system's default output device (headphones plugged in, the default changed in Windows'
+  settings) and is opened again when its device fails; the decks' muted clock outputs move with it, since a
+  clock left on a vanished device stops the playback. The UI
   still stays light: search results, artist songs and opened collections are appended to the track model instead
   of rebuilding it, and lists create their rows' hover-only controls and cover motifs on demand. The playback
   position (lyrics, progress bar) is corrected by what still waits in the buffers.
@@ -527,17 +530,22 @@ first.
      duration (±12 s) win. Its timed lyrics replace plain text; its plain text is used only when nothing else was
      found. Works for YouTube, Spotify and local tracks.
   4. **Lyrics sites and descriptions** (`LyricsSearch`) — when there are still no lyrics at all. All at once:
-     [NetEase Cloud Music](https://music.163.com) (timed LRC, kept timed only when the duration matches within
-     3 s), [Tekstowo.pl](https://www.tekstowo.pl), [Genius](https://genius.com), [lyrics.ovh](https://lyrics.ovh)
+     [NetEase Cloud Music](https://music.163.com), [QQ Music](https://y.qq.com) and [Kugou](https://www.kugou.com)
+     (timed LRC, kept timed only when the duration matches within 3 s; title and credit lines dropped),
+     [Musixmatch](https://www.musixmatch.com) (the song page, by artist and title),
+     [Tekstowo.pl](https://www.tekstowo.pl), [Genius](https://genius.com), [lyrics.ovh](https://lyrics.ovh)
      and the description of the YouTube video or SoundCloud track (the longest block of short lines without
      links, hashtags or credits). Timed lyrics win, then the sites in that order, the description last. A result
      must name the same artist and title; titles of re-uploads are cleaned first ("slowed + reverb", "[33Hz]",
      "Rebassed by…", "prod."), and an "Artist - Title" upload title is tried before the channel's name.
-     Section headers ("[Chorus]", "Refren:") become verse breaks. Only after this does the lyrics panel offer
-     to recognize the lyrics from the recording.
-- **Cache:** `lyrics\<sha1>.json` in the data directory. Missing lyrics are remembered for 3 days. Cache version 4:
-  older "missing" entries are fetched again once (version 3 did the same for LRCLIB, and also refetched untimed
-  YouTube lyrics).
+     Only after this does the lyrics panel offer to recognize the lyrics from the recording.
+- **Plain lyrics are tidied** (`Lyrics::tidyText`, whatever their source) so they hold what is sung, as many
+  times as it's sung — what alignment needs to time them: section headers ("[Chorus]", "Ref.:", "Zwrotka 2:")
+  become verse breaks, a chorus only named again ("Ref.", "[Chorus x2]") is written out as it was the first
+  time, repeat marks repeat their line ("… (x2)") or verse ("2x" under it), and guitar chords are dropped.
+- **Cache:** `lyrics\<sha1>.json` in the data directory. Missing lyrics are remembered for 3 days. Cache version 5:
+  plain or aligned lyrics whose text tidying would change are fetched (and timed) again once; version 4 did
+  the same for "missing" entries, version 3 for LRCLIB and untimed YouTube lyrics.
 - **Results of whisper** (recognized lyrics, and timing made before 0.25.0 replaced whisper with forced
   alignment) can be removed: one track at a time under its lyrics, or all at once in *Settings → Lyrics*.
   An entry made by the aligner carries `"engine": "aligner"`; unmarked timing stored before 0.25.0's release

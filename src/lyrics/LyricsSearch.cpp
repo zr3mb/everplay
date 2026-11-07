@@ -89,26 +89,48 @@ QString htmlToText(QString html)
     return decodeEntities(html);
 }
 
-// A line that names a part of the song instead of being sung: "[Chorus]", "Refren:", "Zwrotka 2: <rapper>".
-bool isSectionHeader(const QString &line)
-{
-    static const QRegularExpression bracketed(QStringLiteral("^\\s*\\[[^\\]]*\\]\\s*$"));
-    static const QRegularExpression named(
-        QStringLiteral("^\\s*[\\[\\(]?\\s*(ref(ren)?|zwrotka|chorus|verse|hook|intro|outro|bridge|pre-?chorus|"
-                       "post-?chorus|interlude|tekst|lyrics|słowa)\\b\\s*\\d*\\s*[\\]\\)]?\\s*([:：-]\\s*.{0,40})?$"),
-        QRegularExpression::CaseInsensitiveOption);
-    return bracketed.match(line).hasMatch() || named.match(line).hasMatch();
-}
-
-// Lyrics from plain text: section headers become verse breaks.
+// Lyrics from plain text (tidied: section headers become verse breaks, a repeated chorus is written out).
 Lyrics textToLyrics(const QString &text, const QString &source)
 {
-    QStringList lines;
-    for (const QString &line : text.split(QChar('\n')))
-        lines << (isSectionHeader(line) ? QString() : line);
-    Lyrics l = Lyrics::fromPlainText(lines.join(QChar('\n')));
+    Lyrics l = Lyrics::fromPlainText(text);
     if (l.wordCount() < 12)
         return {};
+    l.source = source;
+    l.origin = QStringLiteral("web");
+    return l;
+}
+
+// Lyrics from an LRC file of a Chinese music service: the title line and the credits before the lyrics
+// ("作词 : …", "Lyrics by: …") are dropped, an instrumental ("纯音乐") has none. Timing of another cut of the
+// track would be wrong — only the text is kept then.
+Lyrics lrcLyrics(const QString &lrc, const QString &title, bool sameCut, const QString &source)
+{
+    if (lrc.isEmpty() || lrc.contains(QStringLiteral("纯音乐")))
+        return {};
+    static const QRegularExpression credits(
+        QStringLiteral("^\\[[^\\]]*\\]\\s*(作词|作曲|编曲|制作人|混音|母带|和声|吉他|贝斯|鼓|录音|监制|出品|词|曲|"
+                       "producer|composer|lyricist|lyrics by|composed by|produced by|written by|mixed|mastered|arranged)[^:：]*[:：].*$"),
+        QRegularExpression::CaseInsensitiveOption | QRegularExpression::MultilineOption);
+    static const QRegularExpression leadingCredit(QStringLiteral("^[^:：]{1,30}[:：]"));
+    QString cleaned = decodeEntities(lrc);
+    cleaned.remove(credits);
+    Lyrics l = Lyrics::fromLrc(cleaned);
+    const QString simpleTitle = LyricsSearch::simple(LyricsSearch::cleanTitle(title));
+    while (!l.lines.isEmpty()) {
+        const QString t = l.lines.first().text;
+        const bool titleLine = t.contains(QLatin1String(" - ")) && LyricsSearch::simple(t).contains(simpleTitle);
+        if (!t.isEmpty() && !titleLine && !leadingCredit.match(t).hasMatch())
+            break;
+        l.lines.removeFirst();
+    }
+    if (l.wordCount() < 12)
+        return {};
+    if (!sameCut || !l.synced) {
+        // Another cut of the track: its timing would be wrong, the text is still right.
+        for (LyricLine &line : l.lines)
+            line.start = line.end = -1;
+        l.synced = false;
+    }
     l.source = source;
     l.origin = QStringLiteral("web");
     return l;
@@ -234,7 +256,7 @@ QString LyricsSearch::lyricsInDescription(const QString &description)
     };
     for (const QString &raw : lines) {
         const QString line = raw.trimmed();
-        if (line.isEmpty() || isSectionHeader(line)) {
+        if (line.isEmpty() || Lyrics::isSectionHeader(line)) {
             if (!current.isEmpty() && !current.last().isEmpty())
                 current << QString();   // a verse break inside the block
             continue;
@@ -313,12 +335,19 @@ void LyricsSearch::fetch(const Query &query, std::function<void(const Lyrics &)>
     // Ranks: timed lyrics first, then the sites by how reliable their texts are; a description last.
     for (int c = 0; c < candidates.size(); ++c) {
         const auto &[artist, name] = candidates.at(c);
-        search->pending += 4;
-        netEase(artist, name, query.durationSec, [search, c](const Lyrics &l) {
-            search->offer((l.synced ? 0 : 30) + c, l);
-            if (--search->pending == 0)
-                search->finish();
-        });
+        // LRC sources: timed lyrics come first, their text alone after the lyrics sites.
+        auto timed = [search, c](int timedRank, int plainRank) {
+            return [search, c, timedRank, plainRank](const Lyrics &l) {
+                search->offer((l.synced ? timedRank : plainRank) + c, l);
+                if (--search->pending == 0)
+                    search->finish();
+            };
+        };
+        search->pending += 7;
+        netEase(artist, name, query.durationSec, timed(0, 30));
+        qqMusic(artist, name, query.durationSec, timed(2, 32));
+        kugou(artist, name, query.durationSec, timed(4, 34));
+        musixmatch(artist, name, collect(8 + c));
         tekstowo(artist, name, collect(10 + c));
         genius(artist, name, collect(20 + c));
         lyricsOvh(artist, name, collect(40 + c));
@@ -368,39 +397,121 @@ void LyricsSearch::netEase(const QString &artist, const QString &title, int dura
             QUrl lyricUrl(QStringLiteral("https://music.163.com/api/song/lyric"));
             lyricUrl.setQuery(QUrlQuery { { QStringLiteral("id"), QString::number(qint64(song.value("id").toDouble())) },
                                           { QStringLiteral("lv"), QStringLiteral("1") } });
-            get(lyricUrl, [done, sameCut](const QByteArray &body, int status) {
+            get(lyricUrl, [done, sameCut, title](const QByteArray &body, int status) {
                 const QString lrc = status == 200 ? QJsonDocument::fromJson(body).object().value("lrc").toObject().value("lyric").toString()
                                                   : QString();
-                // "纯音乐" = an instrumental; the lines before the lyrics credit the writers ("作词 : …").
-                if (lrc.contains(QStringLiteral("纯音乐"))) {
-                    done({});
-                    return;
-                }
-                static const QRegularExpression credits(
-                    QStringLiteral("^\\[[^\\]]*\\]\\s*(作词|作曲|编曲|制作人|混音|母带|和声|吉他|贝斯|鼓|录音|监制|出品|词|曲|"
-                                   "producer|composer|lyricist|written by|mixed|mastered|arranged)[^:：]*[:：].*$"),
-                    QRegularExpression::CaseInsensitiveOption | QRegularExpression::MultilineOption);
-                QString cleaned = lrc;
-                cleaned.remove(credits);
-                Lyrics l = Lyrics::fromLrc(cleaned);
-                if (l.wordCount() < 12) {
-                    done({});
-                    return;
-                }
-                if (!sameCut || !l.synced) {
-                    // Another cut of the track: its timing would be wrong, the text is still right.
-                    for (LyricLine &line : l.lines)
-                        line.start = line.end = -1;
-                    l.synced = false;
-                }
-                l.source = sourceLabel(QStringLiteral("NetEase Cloud Music"));
-                l.origin = QStringLiteral("web");
-                done(l);
+                done(lrcLyrics(lrc, title, sameCut, sourceLabel(QStringLiteral("NetEase Cloud Music"))));
             }, {}, { { "Referer", "https://music.163.com" } });
             return;
         }
         done({});
     }, {}, headers);
+}
+
+void LyricsSearch::qqMusic(const QString &artist, const QString &title, int durationSec, std::function<void(const Lyrics &)> done)
+{
+    QUrl url(QStringLiteral("https://c.y.qq.com/soso/fcgi-bin/client_search_cp"));
+    url.setQuery(QUrlQuery { { QStringLiteral("w"), artist + QChar(' ') + title }, { QStringLiteral("format"), QStringLiteral("json") },
+                             { QStringLiteral("n"), QStringLiteral("8") }, { QStringLiteral("p"), QStringLiteral("1") } });
+    const QList<std::pair<QByteArray, QByteArray>> headers { { "Referer", "https://y.qq.com/" } };
+    get(url, [this, artist, title, durationSec, done, headers](const QByteArray &body, int status) {
+        // The same cut first (live versions are listed under the same title), else any match for the text.
+        QString mid;
+        bool sameCut = false;
+        const QJsonArray songs = status == 200
+            ? QJsonDocument::fromJson(body).object().value("data").toObject().value("song").toObject().value("list").toArray()
+            : QJsonArray();
+        for (const QJsonValue &v : songs) {
+            const QJsonObject song = v.toObject();
+            QStringList artists;
+            for (const QJsonValue &a : song.value("singer").toArray())
+                artists << a.toObject().value("name").toString();
+            if (!sameTitle(song.value("songname").toString(), title) || !sameArtist(artists.join(QChar(' ')), artist))
+                continue;
+            const bool cut = durationSec > 0 && std::abs(song.value("interval").toInt() - durationSec) <= 3;
+            if (mid.isEmpty() || (cut && !sameCut)) {
+                mid = song.value("songmid").toString();
+                sameCut = cut;
+            }
+        }
+        if (mid.isEmpty()) {
+            done({});
+            return;
+        }
+        QUrl lyricUrl(QStringLiteral("https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg"));
+        lyricUrl.setQuery(QUrlQuery { { QStringLiteral("songmid"), mid }, { QStringLiteral("format"), QStringLiteral("json") },
+                                      { QStringLiteral("nobase64"), QStringLiteral("1") }, { QStringLiteral("g_tk"), QStringLiteral("5381") } });
+        get(lyricUrl, [done, sameCut, title](const QByteArray &body, int status) {
+            const QString lrc = status == 200 ? QJsonDocument::fromJson(body).object().value("lyric").toString() : QString();
+            done(lrcLyrics(lrc, title, sameCut, sourceLabel(QStringLiteral("QQ Music"))));
+        }, {}, headers);
+    }, {}, headers);
+}
+
+void LyricsSearch::kugou(const QString &artist, const QString &title, int durationSec, std::function<void(const Lyrics &)> done)
+{
+    QUrl url(QStringLiteral("https://lyrics.kugou.com/search"));
+    url.setQuery(QUrlQuery { { QStringLiteral("ver"), QStringLiteral("1") }, { QStringLiteral("man"), QStringLiteral("yes") },
+                             { QStringLiteral("client"), QStringLiteral("pc") },
+                             { QStringLiteral("keyword"), artist + QStringLiteral(" - ") + title },
+                             { QStringLiteral("duration"), QString::number(qint64(durationSec) * 1000) } });
+    get(url, [this, artist, title, durationSec, done](const QByteArray &body, int status) {
+        QJsonObject pick;
+        bool sameCut = false;
+        const QJsonArray candidates = status == 200 ? QJsonDocument::fromJson(body).object().value("candidates").toArray() : QJsonArray();
+        for (const QJsonValue &v : candidates) {
+            const QJsonObject c = v.toObject();
+            if (!sameTitle(c.value("song").toString(), title) || !sameArtist(c.value("singer").toString(), artist))
+                continue;
+            const bool cut = durationSec > 0 && std::abs(c.value("duration").toDouble() / 1000.0 - durationSec) <= 3;
+            if (pick.isEmpty() || (cut && !sameCut)) {
+                pick = c;
+                sameCut = cut;
+            }
+        }
+        if (pick.isEmpty()) {
+            done({});
+            return;
+        }
+        QUrl lyricUrl(QStringLiteral("https://lyrics.kugou.com/download"));
+        lyricUrl.setQuery(QUrlQuery { { QStringLiteral("ver"), QStringLiteral("1") }, { QStringLiteral("client"), QStringLiteral("pc") },
+                                      { QStringLiteral("id"), pick.value("id").toString() },
+                                      { QStringLiteral("accesskey"), pick.value("accesskey").toString() },
+                                      { QStringLiteral("fmt"), QStringLiteral("lrc") }, { QStringLiteral("charset"), QStringLiteral("utf8") } });
+        get(lyricUrl, [done, sameCut, title](const QByteArray &body, int status) {
+            const QByteArray content = status == 200 ? QJsonDocument::fromJson(body).object().value("content").toString().toLatin1()
+                                                     : QByteArray();
+            const QString lrc = QString::fromUtf8(QByteArray::fromBase64(content));
+            done(lrcLyrics(lrc, title, sameCut, sourceLabel(QStringLiteral("Kugou"))));
+        });
+    });
+}
+
+void LyricsSearch::musixmatch(const QString &artist, const QString &title, std::function<void(const Lyrics &)> done)
+{
+    // The song's page is at /lyrics/<Artist>/<Title> (words joined by "-"); the site redirects to its own spelling.
+    auto slug = [](const QString &text) {
+        QString out;
+        for (const QChar c : text)
+            out += c.isLetterOrNumber() ? c : QChar(' ');
+        return out.simplified().replace(QChar(' '), QChar('-'));
+    };
+    const QString path = QStringLiteral("/lyrics/") + QString::fromUtf8(QUrl::toPercentEncoding(slug(artist)))
+                         + QChar('/') + QString::fromUtf8(QUrl::toPercentEncoding(slug(title)));
+    get(QUrl(QStringLiteral("https://www.musixmatch.com") + path), [artist, title, done](const QByteArray &body, int status) {
+        static const QRegularExpression data(QStringLiteral("<script id=\"__NEXT_DATA__\"[^>]*>(.*?)</script>"),
+                                             QRegularExpression::DotMatchesEverythingOption);
+        const auto m = status == 200 ? data.match(QString::fromUtf8(body)) : QRegularExpressionMatch();
+        const QJsonObject info = QJsonDocument::fromJson(m.captured(1).toUtf8()).object().value("props").toObject()
+                                     .value("pageProps").toObject().value("data").toObject().value("trackInfo").toObject()
+                                     .value("data").toObject();
+        const QJsonObject track = info.value("track").toObject();
+        if (!sameTitle(track.value("name").toString(), title) || !sameArtist(track.value("artistName").toString(), artist)) {
+            done({});
+            return;
+        }
+        done(textToLyrics(info.value("lyrics").toObject().value("body").toString(), sourceLabel(QStringLiteral("Musixmatch"))));
+    });
 }
 
 void LyricsSearch::tekstowo(const QString &artist, const QString &title, std::function<void(const Lyrics &)> done)

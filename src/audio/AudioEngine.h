@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QAudioDevice>
 #include <QAudioFormat>
 #include <QMutex>
 #include <QObject>
@@ -11,6 +12,8 @@
 
 class QAudioBuffer;
 class QAudioSink;
+class QMediaDevices;
+class QTimer;
 
 // Custom output path: decoded samples (from QAudioBufferOutput) go through the equalizer
 // into a ring buffer that QAudioSink reads from. The buffer keeps a "cushion" of ~200 ms.
@@ -72,13 +75,23 @@ public:
     // Played samples (mono) since the last call — for the spectrum analyzer.
     void takePlayed(std::vector<float> &mono);
 
+    // The sound follows the system's default output device (a headset plugged in, the default changed
+    // in Windows) and comes back after the device fails. pinOutput() keeps it on the first device whose
+    // name contains the text instead ("" = follow the default again); returns false when none matches.
+    bool pinOutput(const QString &nameFragment);
+    QAudioDevice outputDevice() const;
+
     // Everything below may be called from any thread.
 
 signals:
     void transitionFinished(int fromDeck);
+    void outputDeviceChanged();          // on the GUI thread: the decks' clocks should move to outputDevice()
 
 private:
     class Ring;
+
+    void followDevices();                // GUI thread: opens the sink again when the wanted device changed
+    void openSink(const QAudioDevice &device);   // output thread
 
     struct Stage
     {
@@ -124,6 +137,14 @@ private:
     QThread m_outputThread;               // the sink and its timers
     QObject *m_output = nullptr;          // lives in m_outputThread: invokeMethod's target there
     QAudioSink *m_sink = nullptr;         // used only on m_outputThread
+    QMediaDevices *m_devices = nullptr;   // GUI thread
+    QTimer *m_deviceCheck = nullptr;      // GUI thread: the device list changes in bursts
+    mutable QMutex m_deviceLock;
+    QAudioDevice m_device;                // what the sink plays on (under m_deviceLock)
+    QByteArray m_pinnedId;                // GUI thread; empty = the system default
+    std::atomic<bool> m_sinkFailed { false };
+    std::atomic<float> m_volume { 1.0f };
+    std::atomic<bool> m_paused { false };
     Ring *m_ring = nullptr;
     std::atomic<qint64> m_deviceQueuedUs { 0 };   // what the device holds (for latency())
     mutable QRecursiveMutex m_lock;      // the decks' queues, the transition, the levels

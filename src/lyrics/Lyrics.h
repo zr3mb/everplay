@@ -46,8 +46,15 @@ struct Lyrics
     QJsonObject toJson() const;
     static Lyrics fromJson(const QJsonObject &o);
 
-    // Plain text -> lines without timestamps (keeps empty lines as breaks, trims the excess).
-    static Lyrics fromPlainText(const QString &text);
+    // Plain text -> lines without timestamps (keeps empty lines as breaks, trims the excess). The text is
+    // tidied first (tidyText), so it holds only what is sung, as many times as it's sung.
+    static Lyrics fromPlainText(const QString &text, bool tidy = true);
+    // Lyrics as sites write them -> what is sung: section headers ("[Chorus]", "Ref.:", "Zwrotka 2:") become
+    // verse breaks, a chorus only named again ("Ref.", "[Chorus x2]") is written out, repeat marks
+    // ("(x2)" after a line, "2x" under a verse) repeat it, guitar chords are dropped.
+    static QString tidyText(const QString &text);
+    // A line that names a part of the song instead of being sung.
+    static bool isSectionHeader(const QString &line);
     // LRC format: "[mm:ss.xx]text", several tags per line, [offset:±ms]. No tags -> plain text.
     static Lyrics fromLrc(const QString &text);
     // Fills in "end" from the start of the next line.

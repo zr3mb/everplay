@@ -136,6 +136,29 @@ Item {
         { name: "K8-back2", run: () => { Player.seek(2); root.seekLog("seek 2") } },
         { name: "K9-wait", run: () => root.seekLog("after 2") }
     ]
+    // Moving the sound to another output device while a track plays (--tour-audio-device "<query>@<device name part>"):
+    // the position has to keep advancing on the other device and after coming back to the default one.
+    readonly property bool withAudioDevice: Qt.application.arguments.indexOf("--tour-audio-device") >= 0
+    readonly property var audioDeviceSteps: {
+        if (!withAudioDevice)
+            return []
+        const arg = Qt.application.arguments[Qt.application.arguments.indexOf("--tour-audio-device") + 1].split("@")
+        const log = label => console.log("tour: device", label, "| on", Player.outputDeviceName(), "| playing", Player.playing,
+                                         "| pos", Player.position.toFixed(2))
+        const s = [
+            { name: "D1-search", run: () => { Nav.finishOnboarding(); Player.muted = true; YouTube.search(arg[0]) } },
+            { name: "D2-play", run: () => { const r = Library.onlineResults(); if (r.length) Player.playFrom(r, r[0]) } }
+        ]
+        for (let i = 0; i < 3; ++i)
+            s.push({ name: "D3-wait" + i, run: () => log("default") })
+        s.push({ name: "D4-move", run: () => console.log("tour: device pinned", Player.pinOutputDevice(arg[1] || "")) })
+        for (let i = 0; i < 4; ++i)
+            s.push({ name: "D5-wait" + i, run: () => log("moved") })
+        s.push({ name: "D6-back", run: () => console.log("tour: device unpinned", Player.pinOutputDevice("")) })
+        for (let i = 0; i < 3; ++i)
+            s.push({ name: "D7-wait" + i, run: () => log("back") })
+        return s
+    }
     // Albums and singles on an artist profile open (--tour-albums).
     readonly property bool withAlbums: Qt.application.arguments.indexOf("--tour-albums") >= 0
     readonly property var albumSteps: [
@@ -1232,7 +1255,7 @@ Item {
         { name: "T7-cat-compact", run: () => { Nav.sidebarCompact = true; Nav.queueOpen = false; Nav.navigate("home") } },
         { name: "T8-back", run: () => { Nav.sidebarCompact = false; Nav.queueOpen = true; Theme.themeId = "everplay" } }
     ]
-    readonly property var steps: withIntro ? introSteps : withRedesign ? redesignSteps : withPlugins ? pluginSteps : withDesign ? designSteps : withAhead ? aheadSteps : withCache ? cacheSteps : withSmall ? smallSteps : withSharedCover ? sharedCoverSteps : withQueue ? queueSteps : withRoomAdd ? roomAddSteps : withAccount ? accountSteps : withTrackOrder ? trackOrderSteps : withOrder ? orderSteps : withFolders ? folderSteps : withResize ? resizeSteps : withPassword ? passwordSteps : withMirrors ? mirrorSteps : withLibrarySync ? librarySyncSteps : withMobile ? mobileSteps : withOnline ? onlineSteps : withListen ? listenSteps : withAlign ? alignSteps : withScSeekLiked ? scSeekLikedSteps : withFakeTiming ? fakeTimingSteps : withScSeek ? scSeekSteps : withSearchTitle ? searchTitleSteps : withKaraoke ? karaokeSteps : withScLogin ? scLoginSteps : withSoundCloud ? soundcloudSteps : withRecognize ? recognizeSteps : withThemes ? themeSteps : withStats ? statsSteps : withSearchPlaylists ? searchPlaylistSteps : withOverlayCycle ? overlayCycleSteps : withHotkey ? hotkeySteps : withOverlay ? overlaySteps : withLiked ? likedSteps : withArtist ? artistSteps : withHome ? homeSteps : withLyrics ? lyricSteps : withPlaylists ? playlistSteps : withAlbums ? albumSteps : withSeek ? seekSteps : withPerf ? perfSteps : withCovers ? coverSteps : withMatch ? matchSteps : withEq ? eqSteps : withBig ? bigSteps : withEngine ? engineSteps : withLogin ? loginSteps : baseSteps
+    readonly property var steps: withIntro ? introSteps : withRedesign ? redesignSteps : withPlugins ? pluginSteps : withDesign ? designSteps : withAhead ? aheadSteps : withCache ? cacheSteps : withSmall ? smallSteps : withSharedCover ? sharedCoverSteps : withQueue ? queueSteps : withRoomAdd ? roomAddSteps : withAccount ? accountSteps : withTrackOrder ? trackOrderSteps : withOrder ? orderSteps : withFolders ? folderSteps : withResize ? resizeSteps : withPassword ? passwordSteps : withMirrors ? mirrorSteps : withLibrarySync ? librarySyncSteps : withMobile ? mobileSteps : withOnline ? onlineSteps : withListen ? listenSteps : withAudioDevice ? audioDeviceSteps : withAlign ? alignSteps : withScSeekLiked ? scSeekLikedSteps : withFakeTiming ? fakeTimingSteps : withScSeek ? scSeekSteps : withSearchTitle ? searchTitleSteps : withKaraoke ? karaokeSteps : withScLogin ? scLoginSteps : withSoundCloud ? soundcloudSteps : withRecognize ? recognizeSteps : withThemes ? themeSteps : withStats ? statsSteps : withSearchPlaylists ? searchPlaylistSteps : withOverlayCycle ? overlayCycleSteps : withHotkey ? hotkeySteps : withOverlay ? overlaySteps : withLiked ? likedSteps : withArtist ? artistSteps : withHome ? homeSteps : withLyrics ? lyricSteps : withPlaylists ? playlistSteps : withAlbums ? albumSteps : withSeek ? seekSteps : withPerf ? perfSteps : withCovers ? coverSteps : withMatch ? matchSteps : withEq ? eqSteps : withBig ? bigSteps : withEngine ? engineSteps : withLogin ? loginSteps : baseSteps
     property double navStart: 0
     property bool measuring: false
     readonly property var bigSteps: [
@@ -1317,7 +1340,7 @@ Item {
         running: root.dir !== ""
         repeat: true
         onTriggered: {
-            if (root.step >= 0 && root.step < root.steps.length && !root.withPerf && !root.withSeek && !root.withListen) {   // screenshots would skew the timings
+            if (root.step >= 0 && root.step < root.steps.length && !root.withPerf && !root.withSeek && !root.withListen && !root.withAudioDevice) {   // screenshots would skew the timings
                 const name = root.steps[root.step].name
                 // An open dialog lives in the overlay, outside the shell — its content is grabbed instead.
                 let source = GameOverlay.open && GameOverlay.view ? GameOverlay.view.parent : root.target
