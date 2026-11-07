@@ -183,17 +183,109 @@ AudioEngine::AudioEngine(QObject *parent)
     m_output->moveToThread(&m_outputThread);
     m_ring->moveToThread(&m_outputThread);
     QMetaObject::invokeMethod(m_output, [this, device] {
-        m_sink = new QAudioSink(device, m_format, m_output);
-        m_sink->setBufferSize(m_format.bytesForDuration(80000));   // 80 ms device buffer
-        m_sink->start(m_ring);
+        openSink(device);
         auto *probe = new QTimer(m_output);   // what the device holds, for latency() on other threads
         probe->setInterval(20);
         QObject::connect(probe, &QTimer::timeout, m_output, [this] {
-            const qint64 queued = std::max<qint64>(0, m_sink->bufferSize() - m_sink->bytesFree());
+            const qint64 queued = m_sink ? std::max<qint64>(0, m_sink->bufferSize() - m_sink->bytesFree()) : 0;
             m_deviceQueuedUs = m_format.durationForBytes(qint32(queued));
         });
         probe->start();
     }, Qt::BlockingQueuedConnection);
+
+    // A new default device (headphones plugged in, the default changed in Windows' settings) or a device
+    // that went away: the list changes in bursts, so it's looked at once it settles. The poll catches
+    // a change the system didn't announce.
+    m_deviceCheck = new QTimer(this);
+    m_deviceCheck->setSingleShot(true);
+    m_deviceCheck->setInterval(400);
+    connect(m_deviceCheck, &QTimer::timeout, this, &AudioEngine::followDevices);
+    m_devices = new QMediaDevices(this);
+    connect(m_devices, &QMediaDevices::audioOutputsChanged, m_deviceCheck, qOverload<>(&QTimer::start));
+    auto *poll = new QTimer(this);
+    poll->setInterval(2000);
+    connect(poll, &QTimer::timeout, this, [this] {
+        if (!m_deviceCheck->isActive())
+            followDevices();
+    });
+    poll->start();
+}
+
+void AudioEngine::openSink(const QAudioDevice &device)
+{
+    if (m_sink) {
+        m_sink->disconnect(m_output);
+        m_sink->stop();
+        delete m_sink;
+        m_sink = nullptr;
+    }
+    {
+        QMutexLocker lock(&m_deviceLock);
+        m_device = device;
+    }
+    m_sinkFailed = false;
+    if (!m_ring->isOpen())
+        m_ring->open(QIODevice::ReadOnly);
+    // The system resamples when the device runs at another rate, so the format stays the same.
+    m_sink = new QAudioSink(device, m_format, m_output);
+    m_sink->setBufferSize(m_format.bytesForDuration(80000));   // 80 ms device buffer
+    m_sink->setVolume(m_volume);
+    QObject::connect(m_sink, &QAudioSink::stateChanged, m_output, [this](QAudio::State state) {
+        if (state == QAudio::StoppedState && m_sink && m_sink->error() != QAudio::NoError) {
+            // The device was unplugged or turned off — open the default one (or this one again) soon.
+            qWarning("audio: the output device failed (error %d)", int(m_sink->error()));
+            m_sinkFailed = true;
+            QMetaObject::invokeMethod(this, [this] { m_deviceCheck->start(1500); });
+        }
+    });
+    m_sink->start(m_ring);
+    if (m_sink->error() != QAudio::NoError) {
+        m_sinkFailed = true;
+        QMetaObject::invokeMethod(this, [this] { m_deviceCheck->start(1500); });
+    } else if (m_paused) {
+        m_sink->suspend();
+    }
+    if (qEnvironmentVariableIsSet("EVERPLAY_AUDIO_DEBUG"))
+        qInfo("audio: playing on \"%s\"", qPrintable(device.description()));
+}
+
+void AudioEngine::followDevices()
+{
+    QAudioDevice wanted;
+    if (!m_pinnedId.isEmpty()) {
+        for (const QAudioDevice &d : QMediaDevices::audioOutputs())
+            if (d.id() == m_pinnedId)
+                wanted = d;
+    }
+    if (wanted.isNull())
+        wanted = QMediaDevices::defaultAudioOutput();
+    if (wanted.isNull())
+        return;   // no output at all now — the next change brings one
+    if (wanted.id() == outputDevice().id() && !m_sinkFailed)
+        return;
+    QMetaObject::invokeMethod(m_output, [this, wanted] { openSink(wanted); }, Qt::BlockingQueuedConnection);
+    emit outputDeviceChanged();
+}
+
+bool AudioEngine::pinOutput(const QString &nameFragment)
+{
+    QByteArray id;
+    if (!nameFragment.isEmpty()) {
+        for (const QAudioDevice &d : QMediaDevices::audioOutputs())
+            if (id.isEmpty() && d.description().contains(nameFragment, Qt::CaseInsensitive))
+                id = d.id();
+        if (id.isEmpty())
+            return false;
+    }
+    m_pinnedId = id;
+    followDevices();
+    return true;
+}
+
+QAudioDevice AudioEngine::outputDevice() const
+{
+    QMutexLocker lock(&m_deviceLock);
+    return m_device;
 }
 
 AudioEngine::~AudioEngine()
@@ -565,7 +657,10 @@ void AudioEngine::flush()
 
 void AudioEngine::setPaused(bool paused)
 {
+    m_paused = paused;
     QMetaObject::invokeMethod(m_output, [this, paused] {
+        if (!m_sink)
+            return;
         if (paused && m_sink->state() == QAudio::ActiveState)
             m_sink->suspend();
         else if (!paused && m_sink->state() == QAudio::SuspendedState)
@@ -575,7 +670,11 @@ void AudioEngine::setPaused(bool paused)
 
 void AudioEngine::setVolume(float linear)
 {
-    QMetaObject::invokeMethod(m_output, [this, linear] { m_sink->setVolume(linear); });
+    m_volume = linear;
+    QMetaObject::invokeMethod(m_output, [this, linear] {
+        if (m_sink)
+            m_sink->setVolume(linear);
+    });
 }
 
 double AudioEngine::latency() const

@@ -143,6 +143,9 @@ public:
     // The row's audio is on disk: it plays at once, without the network.
     Q_INVOKABLE bool cached(int row) const;
     Q_INVOKABLE void clearCache() { m_cache.clear(); }
+    // Developer tours: plays on the first output device whose name contains the text ("" = the system default).
+    Q_INVOKABLE bool pinOutputDevice(const QString &nameFragment) { return m_engine.pinOutput(nameFragment); }
+    Q_INVOKABLE QString outputDeviceName() const;
 
     void setVolume(double v);
     void setMuted(bool m);
