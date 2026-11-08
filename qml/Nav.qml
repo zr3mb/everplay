@@ -124,13 +124,23 @@ QtObject {
     }
 
     // Artist profile. With a YouTube Music channel id the page loads it directly; with a name only
-    // (local files) it looks the artist up — "A, B" or "A & B" goes to the first artist.
+    // (local files) it looks the artist up — "A, B" or "A & B" goes to the first artist. A SoundCloud
+    // track's artist ("scu:<user id>") opens the uploader's SoundCloud profile.
     function openArtist(name, browseId) {
         if (!name && !browseId)
             return
         immersive = false
+        if (String(browseId || "").startsWith("scu:")) {
+            openSoundCloudProfile(browseId.slice(4), name)
+            return
+        }
         const first = browseId ? name : String(name).split(/,\s+| & | feat\.? | ft\.? /i)[0].trim()
         navigate("artist", { name: first, browseId: browseId || "" })
+    }
+
+    function openSoundCloudProfile(userId, name, photo) {
+        immersive = false
+        navigate("scprofile", { userId: userId, name: name || "", photo: photo || "" })
     }
 
     function toast(text, icon) {

@@ -97,6 +97,8 @@ public:
     Q_INVOKABLE QVariantList artistSongRows(const QString &browseId) const;   // top songs from YouTube Music
     Q_INVOKABLE QVariantList collectionRows(const QString &playlistId);       // album / playlist opened from an artist
     Q_INVOKABLE QVariantList soundCloudCollectionRows(const QString &playlistId);   // a SoundCloud playlist opened from search
+    // A SoundCloud profile's tracks: which = "popular" or "tracks" (newest first).
+    Q_INVOKABLE QVariantList soundCloudProfileRows(const QString &userId, const QString &which) const;
 
     // Queue contexts: "playlist:<kind>", "yt:<playlist id>", "album:<key>", "artist:<name>", "library",
     // "ytartist:<browseId>" (top songs), "ytc:<playlist id>" (album / playlist from an artist page),

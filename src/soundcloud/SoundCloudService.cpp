@@ -85,7 +85,7 @@ QJsonObject toJson(const Track &t, bool preview)
     return {
         { "id", numericId(t.id) }, { "url", t.path }, { "title", t.title }, { "artist", t.artist }, { "album", t.album },
         { "genre", t.genre }, { "year", t.year }, { "duration", t.duration }, { "cover", t.cover }, { "preview", preview },
-        { "colorA", t.colorA.name() }, { "colorB", t.colorB.name() },
+        { "colorA", t.colorA.name() }, { "colorB", t.colorB.name() }, { "user", t.artistId.mid(4) },
     };
 }
 
@@ -103,6 +103,8 @@ Track fromJson(const QJsonObject &o)
     t.title = o.value("title").toString();
     t.artist = o.value("artist").toString();
     t.album = o.value("album").toString();
+    if (const QString user = o.value("user").toString(); !user.isEmpty())
+        t.artistId = QStringLiteral("scu:") + user;
     t.genre = o.value("genre").toString();
     t.year = o.value("year").toInt();
     t.duration = o.value("duration").toInt();
@@ -560,6 +562,9 @@ Track SoundCloudService::storeTrack(const QJsonObject &o, bool transient)
     if (t.artist.isEmpty())
         t.artist = user.value("username").toString().trimmed();
     t.album = meta.value("album_title").toString().trimmed();
+    // The uploader's profile (ProfilePage): "scu:<user id>" where YouTube tracks hold a channel id.
+    if (const QString uploader = idOf(user.value("id")); !uploader.isEmpty())
+        t.artistId = QStringLiteral("scu:") + uploader;
     t.genre = o.value("genre").toString().trimmed();
     t.year = QDateTime::fromString(o.value("release_date").toString(o.value("created_at").toString()), Qt::ISODate).date().year();
     t.duration = int(o.value("duration").toDouble() / 1000);
@@ -633,6 +638,9 @@ QList<Track> SoundCloudService::tracks() const
     for (const QString &id : m_history)
         add(id);
     for (const QStringList &ids : m_collections)
+        for (const QString &id : ids)
+            add(id);
+    for (const QStringList &ids : m_profileTracks)
         for (const QString &id : ids)
             add(id);
     return out;
@@ -757,6 +765,8 @@ void SoundCloudService::search(const QString &query)
         publishResults({});
         m_playlistResults.clear();
         emit playlistResultsChanged();
+        m_userResults.clear();
+        emit userResultsChanged();
         return;
     }
     m_searching = true;
@@ -770,6 +780,18 @@ void SoundCloudService::search(const QString &query)
             if (v.toObject().value("track_count").toInt() > 0)
                 m_playlistResults << playlistInfo(v.toObject());
         emit playlistResultsChanged();
+    });
+    get(QStringLiteral("/search/users"), QUrlQuery { { "q", q }, { "limit", "8" } },
+        [this, serial](const QJsonValue &json, const QString &) {
+        if (serial != m_searchSerial)
+            return;
+        m_userResults.clear();
+        for (const QJsonValue &v : json.toObject().value("collection").toArray()) {
+            const QVariantMap user = userInfo(v.toObject());
+            if (!user.value("id").toString().isEmpty())
+                m_userResults << user;
+        }
+        emit userResultsChanged();
     });
     get(QStringLiteral("/search/tracks"), QUrlQuery { { "q", q }, { "limit", "30" } },
         [this, serial](const QJsonValue &json, const QString &error) {
@@ -792,6 +814,96 @@ void SoundCloudService::search(const QString &query)
         }
         publishResults(m_search);
     });
+}
+
+// ---- profiles -------------------------------------------------------------------
+
+QVariantMap SoundCloudService::userInfo(const QJsonObject &o)
+{
+    const int followers = o.value("followers_count").toInt();
+    const int tracks = o.value("track_count").toInt();
+    QStringList subtitle;
+    if (followers > 0)
+        subtitle << tr("%n followers", "", followers);
+    if (tracks > 0)
+        subtitle << tr("%n tracks", "", tracks);
+    QString place = o.value("city").toString().trimmed();
+    QString banner;
+    for (const QJsonValue &v : o.value("visuals").toObject().value("visuals").toArray())
+        if (banner.isEmpty())
+            banner = v.toObject().value("visual_url").toString();
+    return {
+        { "id", idOf(o.value("id")) },
+        { "name", o.value("username").toString().trimmed() },
+        { "fullName", o.value("full_name").toString().trimmed() },
+        { "subtitle", subtitle.join(QStringLiteral(" · ")) },
+        { "photo", bigArtwork(o.value("avatar_url").toString()) },
+        { "banner", banner },
+        { "description", o.value("description").toString().trimmed() },
+        { "place", place },
+        { "followers", followers },
+        { "trackCount", tracks },
+        { "verified", o.value("verified").toBool() },
+        { "url", o.value("permalink_url").toString() },
+    };
+}
+
+void SoundCloudService::updateProfile(const QString &userId, const QVariantMap &fields)
+{
+    QVariantMap &p = m_profiles[userId];
+    for (auto it = fields.cbegin(); it != fields.cend(); ++it)
+        p.insert(it.key(), it.value());
+    ++m_profilesRevision;
+    emit profilesChanged();
+}
+
+void SoundCloudService::loadProfile(const QString &userId)
+{
+    if (userId.isEmpty() || m_profiles.contains(userId))
+        return;
+    // Five parts arrive on their own; the page shows each as it comes. "loading" is cleared by the last.
+    auto pending = std::make_shared<int>(5);
+    auto finished = [this, userId, pending] {
+        if (--*pending == 0)
+            updateProfile(userId, { { "loading", false } });
+    };
+    updateProfile(userId, { { "loading", true } });
+
+    get(QStringLiteral("/users/") + userId, {}, [this, userId, finished](const QJsonValue &json, const QString &error) {
+        if (!error.isEmpty())
+            updateProfile(userId, { { "error", error } });
+        else
+            updateProfile(userId, userInfo(json.toObject()));
+        finished();
+    });
+    for (const QString which : { QStringLiteral("popular"), QStringLiteral("tracks") }) {
+        const QString path = QStringLiteral("/users/%1/%2").arg(userId, which == QLatin1String("popular") ? "toptracks" : "tracks");
+        get(path, QUrlQuery { { "limit", which == QLatin1String("popular") ? "10" : "50" } },
+            [this, userId, which, finished](const QJsonValue &json, const QString &) {
+            QStringList ids;
+            for (const QJsonValue &v : json.toObject().value("collection").toArray()) {
+                const Track t = storeTrack(v.toObject(), true);
+                if (!t.id.isEmpty())
+                    ids << t.id;
+            }
+            m_profileTracks.insert(userId + QChar('/') + which, ids);
+            publishResults(ids);
+            ++m_profilesRevision;
+            emit profilesChanged();
+            finished();
+        });
+    }
+    for (const QString which : { QStringLiteral("albums"), QStringLiteral("playlists") }) {
+        const QString path = QStringLiteral("/users/%1/%2").arg(userId, which == QLatin1String("albums") ? "albums" : "playlists_without_albums");
+        get(path, QUrlQuery { { "limit", "24" } }, [this, userId, which, finished](const QJsonValue &json, const QString &) {
+            QVariantList lists;
+            for (const QJsonValue &v : json.toObject().value("collection").toArray())
+                if (v.toObject().value("track_count").toInt() > 0)
+                    lists << playlistInfo(v.toObject());
+            updateProfile(userId, { { which, lists } });
+            finished();
+        });
+    }
 }
 
 // ---- playlists ------------------------------------------------------------------

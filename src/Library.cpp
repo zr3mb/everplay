@@ -1419,10 +1419,20 @@ QVariantList Library::soundCloudCollectionRows(const QString &playlistId)
     return rowsOfIds(sc->collectionTrackIds(playlistId));
 }
 
+QVariantList Library::soundCloudProfileRows(const QString &userId, const QString &which) const
+{
+    return rowsOfIds(SoundCloudService::instance()->profileTrackIds(userId, which));
+}
+
 QVariantList Library::rowsForContext(const QString &context)
 {
     if (context == QLatin1String("library"))
         return libraryRows();
+    if (context.startsWith(QLatin1String("scu:"))) {   // "scu:<user id>/<popular|tracks>"
+        const QString rest = context.mid(4);
+        const qsizetype slash = rest.indexOf(QChar('/'));
+        return soundCloudProfileRows(rest.left(slash), slash < 0 ? QStringLiteral("tracks") : rest.mid(slash + 1));
+    }
     if (context.startsWith(QLatin1String("scc:")))
         return soundCloudCollectionRows(context.mid(4));
     if (context.startsWith(QLatin1String("ytartist:")))

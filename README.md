@@ -242,6 +242,10 @@ Appearance and layout settings (`[ui]` in `settings.ini`) are remembered between
   albums, singles, playlists and related artists (sections named as YouTube Music names them) — plus the artist's
   tracks from your library. Artists of local files are looked up on YouTube Music by name. Albums and playlists
   opened from a profile are loaded on demand and don't become part of the library.
+  The artist of a SoundCloud track opens the uploader's **SoundCloud profile** instead: photo, description,
+  followers, popular tracks, albums, playlists and the newest uploads. Profiles also come up in search — all of
+  them with the *SoundCloud* filter, and under *All* the ones whose name is exactly what was typed.
+  (`--tour <dir> --tour-sc-profile "<query>"` searches, opens the first profile and plays from it.)
 - **Playback:** the audio stream URL comes from **yt-dlp** (the *Download* button fetches the official release
   from GitHub and verifies SHA-256; on Windows the faster unpacked build `yt-dlp_win.zip`). URLs are cached until
   they expire; the next track in the queue (also with shuffle) and a track you hover over are prepared in advance.

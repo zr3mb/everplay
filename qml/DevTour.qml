@@ -1016,6 +1016,39 @@ Item {
         s.push({ name: "L17-wait", run: log })
         return s
     }
+    // A SoundCloud profile (--tour-sc-profile "<query>"): the profiles found, the first one opened, its
+    // popular track played, then the profile opened again from the playing track's artist.
+    readonly property bool withScProfile: Qt.application.arguments.indexOf("--tour-sc-profile") >= 0
+    readonly property var scProfileSteps: {
+        if (!withScProfile)
+            return []
+        const query = Qt.application.arguments[Qt.application.arguments.indexOf("--tour-sc-profile") + 1]
+        return [
+            { name: "S1-search", run: () => { Nav.finishOnboarding(); Player.muted = true; Nav.navigate("search", { query: query, filter: 3 }) } },
+            { name: "S2-wait", run: () => {} },
+            { name: "S3-found", run: () => {
+                console.log("tour: profiles", SoundCloud.userResults.length, "|", SoundCloud.userResults.slice(0, 4).map(u => u.name + " (" + u.subtitle + ")").join(" | "))
+                const u = SoundCloud.userResults[0]
+                if (u) Nav.openSoundCloudProfile(u.id, u.name, u.photo)
+            } },
+            { name: "S4-wait", run: () => {} },
+            { name: "S5-profile", run: () => {
+                const id = Nav.args.userId
+                const p = SoundCloud.profile(id)
+                const pop = Library.soundCloudProfileRows(id, "popular"), all = Library.soundCloudProfileRows(id, "tracks")
+                console.log("tour: profile", p.name, "| loading", p.loading, "| error", p.error || "", "| popular", pop.length,
+                            "| tracks", all.length, "| albums", (p.albums || []).length, "| playlists", (p.playlists || []).length)
+                if (pop.length) Player.playFrom(pop, pop[0], "scu:" + id + "/popular")
+                Nav.navigate("home")
+            } },
+            { name: "S6-wait", run: () => {} },
+            { name: "S7-artist", run: () => {
+                console.log("tour: playing", Player.title, "| artistId", Player.artistId, "| playing", Player.playing)
+                Nav.openArtist(Player.artist, Player.artistId)
+            } },
+            { name: "S8-again", run: () => console.log("tour: page", Nav.page, "| user", Nav.args.userId) },
+        ]
+    }
     // SoundCloud: search, play a track (and seek in it), open a found playlist, the sources (--tour-soundcloud).
     readonly property bool withSoundCloud: Qt.application.arguments.indexOf("--tour-soundcloud") >= 0
     readonly property var soundcloudSteps: [
@@ -1255,7 +1288,7 @@ Item {
         { name: "T7-cat-compact", run: () => { Nav.sidebarCompact = true; Nav.queueOpen = false; Nav.navigate("home") } },
         { name: "T8-back", run: () => { Nav.sidebarCompact = false; Nav.queueOpen = true; Theme.themeId = "everplay" } }
     ]
-    readonly property var steps: withIntro ? introSteps : withRedesign ? redesignSteps : withPlugins ? pluginSteps : withDesign ? designSteps : withAhead ? aheadSteps : withCache ? cacheSteps : withSmall ? smallSteps : withSharedCover ? sharedCoverSteps : withQueue ? queueSteps : withRoomAdd ? roomAddSteps : withAccount ? accountSteps : withTrackOrder ? trackOrderSteps : withOrder ? orderSteps : withFolders ? folderSteps : withResize ? resizeSteps : withPassword ? passwordSteps : withMirrors ? mirrorSteps : withLibrarySync ? librarySyncSteps : withMobile ? mobileSteps : withOnline ? onlineSteps : withListen ? listenSteps : withAudioDevice ? audioDeviceSteps : withAlign ? alignSteps : withScSeekLiked ? scSeekLikedSteps : withFakeTiming ? fakeTimingSteps : withScSeek ? scSeekSteps : withSearchTitle ? searchTitleSteps : withKaraoke ? karaokeSteps : withScLogin ? scLoginSteps : withSoundCloud ? soundcloudSteps : withRecognize ? recognizeSteps : withThemes ? themeSteps : withStats ? statsSteps : withSearchPlaylists ? searchPlaylistSteps : withOverlayCycle ? overlayCycleSteps : withHotkey ? hotkeySteps : withOverlay ? overlaySteps : withLiked ? likedSteps : withArtist ? artistSteps : withHome ? homeSteps : withLyrics ? lyricSteps : withPlaylists ? playlistSteps : withAlbums ? albumSteps : withSeek ? seekSteps : withPerf ? perfSteps : withCovers ? coverSteps : withMatch ? matchSteps : withEq ? eqSteps : withBig ? bigSteps : withEngine ? engineSteps : withLogin ? loginSteps : baseSteps
+    readonly property var steps: withIntro ? introSteps : withRedesign ? redesignSteps : withPlugins ? pluginSteps : withDesign ? designSteps : withAhead ? aheadSteps : withCache ? cacheSteps : withSmall ? smallSteps : withSharedCover ? sharedCoverSteps : withQueue ? queueSteps : withRoomAdd ? roomAddSteps : withAccount ? accountSteps : withTrackOrder ? trackOrderSteps : withOrder ? orderSteps : withFolders ? folderSteps : withResize ? resizeSteps : withPassword ? passwordSteps : withMirrors ? mirrorSteps : withLibrarySync ? librarySyncSteps : withMobile ? mobileSteps : withOnline ? onlineSteps : withListen ? listenSteps : withAudioDevice ? audioDeviceSteps : withScProfile ? scProfileSteps : withAlign ? alignSteps : withScSeekLiked ? scSeekLikedSteps : withFakeTiming ? fakeTimingSteps : withScSeek ? scSeekSteps : withSearchTitle ? searchTitleSteps : withKaraoke ? karaokeSteps : withScLogin ? scLoginSteps : withSoundCloud ? soundcloudSteps : withRecognize ? recognizeSteps : withThemes ? themeSteps : withStats ? statsSteps : withSearchPlaylists ? searchPlaylistSteps : withOverlayCycle ? overlayCycleSteps : withHotkey ? hotkeySteps : withOverlay ? overlaySteps : withLiked ? likedSteps : withArtist ? artistSteps : withHome ? homeSteps : withLyrics ? lyricSteps : withPlaylists ? playlistSteps : withAlbums ? albumSteps : withSeek ? seekSteps : withPerf ? perfSteps : withCovers ? coverSteps : withMatch ? matchSteps : withEq ? eqSteps : withBig ? bigSteps : withEngine ? engineSteps : withLogin ? loginSteps : baseSteps
     property double navStart: 0
     property bool measuring: false
     readonly property var bigSteps: [

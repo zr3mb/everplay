@@ -111,5 +111,9 @@
   "Removed lyrics made by speech recognition from %n track(s)": [
     "Removed lyrics made by speech recognition from %n track",
     "Removed lyrics made by speech recognition from %n tracks"
+  ],
+  "%n followers": [
+    "%n follower",
+    "%n followers"
   ]
 }
