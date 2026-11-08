@@ -72,6 +72,15 @@ Item {
     // Public playlists for the query (YouTube Music's own, then users'); they open like an artist's albums.
     readonly property var playlists: onlineEnabled ? YouTube.playlistResults : []
     readonly property var soundcloudPlaylists: soundcloudEnabled ? SoundCloud.playlistResults : []
+    // Profiles: shown with "SoundCloud" picked, or for "All" when a profile's name is what was typed.
+    readonly property var soundcloudUsers: {
+        if (!soundcloudEnabled)
+            return []
+        if (filter === 3)
+            return SoundCloud.userResults
+        const q = query.trim().toLowerCase()
+        return SoundCloud.userResults.filter(u => String(u.name).toLowerCase() === q).slice(0, 2)
+    }
     function openSoundCloud(p) {
         Nav.navigate("playlist", { kind: "sccollection", playlistId: p.id, title: p.title, subtitle: p.subtitle,
                                    cover: p.cover })
@@ -81,6 +90,7 @@ Item {
                                    cover: p.cover, label: qsTr("PLAYLIST") })
     }
     CardShadow { id: playlistShadow; size: 168 }
+    CardShadow { id: profileShadow; size: 132; radius: 66 }
 
     // Rows are built at once (Repeater), so long result lists show in parts.
     property int shown: 40
@@ -423,7 +433,8 @@ Item {
             }
 
             RowLayout {
-                visible: page.soundcloud.length > 0 || (page.soundcloudEnabled && SoundCloud.searching)
+                visible: page.soundcloud.length > 0 || page.soundcloudUsers.length > 0
+                         || (page.soundcloudEnabled && SoundCloud.searching)
                 Layout.fillWidth: true
                 Layout.topMargin: page.results.length > 0 || page.online.length > 0 ? 26 : 0
                 Layout.bottomMargin: 8
@@ -438,6 +449,33 @@ Item {
                     font.weight: Font.DemiBold
                 }
                 Spinner { visible: SoundCloud.searching; size: 18; color: Theme.textDim }
+            }
+
+            // Profiles (artists and other users) whose name fits, as round cards above the tracks.
+            Flow {
+                visible: page.soundcloudUsers.length > 0
+                Layout.fillWidth: true
+                Layout.bottomMargin: 14
+                spacing: 16
+                Repeater {
+                    model: page.soundcloudUsers.slice(0, 6)
+                    AlbumCard {
+                        required property var modelData
+                        required property int index
+                        width: 132
+                        shadow: profileShadow
+                        round: true
+                        title: modelData.name
+                        subtitle: modelData.subtitle || qsTr("Profile")
+                        cover: modelData.photo
+                        colorA: "#d9a27e"
+                        colorB: "#5a3a28"
+                        seed: index
+                        revealDelay: index * 30
+                        onClicked: Nav.openSoundCloudProfile(modelData.id, modelData.name, modelData.photo)
+                        onPlayClicked: Nav.openSoundCloudProfile(modelData.id, modelData.name, modelData.photo)
+                    }
+                }
             }
 
             Repeater {

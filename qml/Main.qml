@@ -262,6 +262,7 @@ ApplicationWindow {
     Component { id: libraryPage; LibraryPage {} }
     Component { id: playlistPage; PlaylistPage {} }
     Component { id: artistPage; ArtistPage {} }
+    Component { id: soundCloudProfilePage; SoundCloudProfilePage {} }
     Component { id: sourcesPage; SourcesPage {} }
     Component { id: settingsPage; SettingsPage {} }
     Component { id: equalizerPage; EqualizerPage {} }
@@ -275,6 +276,7 @@ ApplicationWindow {
         case "library": return libraryPage
         case "playlist": return playlistPage
         case "artist": return artistPage
+        case "scprofile": return soundCloudProfilePage
         case "sources": return sourcesPage
         case "settings": return settingsPage
         case "equalizer": return equalizerPage

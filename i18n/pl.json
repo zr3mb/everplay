@@ -1213,5 +1213,11 @@
     "Usunięto tekst z rozpoznawania mowy z %n utworu",
     "Usunięto tekst z rozpoznawania mowy z %n utworów",
     "Usunięto tekst z rozpoznawania mowy z %n utworów"
-  ]
+  ],
+  "%n followers": ["%n obserwujący", "%n obserwujących", "%n obserwujących"],
+  "PROFILE · SOUNDCLOUD": "PROFIL · SOUNDCLOUD",
+  "PROFILE · SOUNDCLOUD · VERIFIED": "PROFIL · SOUNDCLOUD · ZWERYFIKOWANY",
+  "Couldn't load the profile from SoundCloud: %1": "Nie udało się wczytać profilu z SoundCloud: %1",
+  "No tracks on this profile.": "Ten profil nie ma utworów.",
+  "Newest first": "Od najnowszych"
 }

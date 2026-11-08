@@ -45,6 +45,10 @@ class SoundCloudService : public QObject
     Q_PROPERTY(bool searching READ searching NOTIFY searchingChanged)
     // Playlists matching the latest search: [{ id, title, subtitle, cover, count }]
     Q_PROPERTY(QVariantList playlistResults READ playlistResults NOTIFY playlistResultsChanged)
+    // Profiles matching the latest search: [{ id, name, subtitle, photo }]
+    Q_PROPERTY(QVariantList userResults READ userResults NOTIFY userResultsChanged)
+    // Bumps when a profile (loadProfile) arrives or changes.
+    Q_PROPERTY(int profilesRevision READ profilesRevision NOTIFY profilesChanged)
     // Bumps when search results / an opened playlist arrive (appended to the track model, like YouTube's).
     Q_PROPERTY(int resultsRevision READ resultsRevision NOTIFY resultsChanged)
 
@@ -64,6 +68,8 @@ public:
     bool searching() const { return m_searching; }
     QVariantList playlistResults() const { return m_playlistResults; }
     int resultsRevision() const { return m_resultsRevision; }
+    QVariantList userResults() const { return m_userResults; }
+    int profilesRevision() const { return m_profilesRevision; }
 
     Q_INVOKABLE void login();
     Q_INVOKABLE void cancelLogin();
@@ -74,6 +80,11 @@ public:
     // Playlists opened from search — kept in memory only, not added to the library.
     Q_INVOKABLE void ensureCollection(const QString &playlistId);
     Q_INVOKABLE bool collectionLoading(const QString &playlistId) const { return m_loadingCollections.contains(playlistId); }
+    // A user's profile (artists are users on SoundCloud): loaded once per run, kept in memory only.
+    Q_INVOKABLE void loadProfile(const QString &userId);
+    // { loading, error, name, photo, banner, description, place, followers, trackCount, url,
+    //   playlists: [{ id, title, subtitle, cover, count }], albums: [...] } — {} before loadProfile.
+    Q_INVOKABLE QVariantMap profile(const QString &userId) const { return m_profiles.value(userId); }
 
     // For Library / Player
     QList<Track> tracks() const;
@@ -84,6 +95,9 @@ public:
     bool playlistLoading(const QString &playlistId) const { return m_loadingCollections.contains(playlistId); }
     const QStringList &searchIds() const { return m_search; }
     QStringList collectionTrackIds(const QString &playlistId) const { return m_collections.value(playlistId); }
+    // A profile's tracks: "popular" (its most played) or "tracks" (newest first).
+    QStringList profileTrackIds(const QString &userId, const QString &which) const
+    { return m_profileTracks.value(userId + QChar('/') + which); }
     void setHistory(const QList<Track> &tracks);   // recently played (ListeningHistory), kept playable
     bool isLiked(const QString &trackId) const { return m_likedSet.contains(trackId); }
     void setTrackLiked(const QString &trackId, bool liked);
@@ -101,6 +115,8 @@ signals:
     void dataChanged();
     void searchingChanged();
     void playlistResultsChanged();
+    void userResultsChanged();
+    void profilesChanged();
     void notice(const QString &text, const QString &icon);
     void tracksAdded(const QList<Track> &tracks);   // new transient tracks for the end of the model
     void resultsChanged();
@@ -139,6 +155,8 @@ private:
     // Parsing the API's JSON; a track that can't be played comes back with an empty id.
     Track storeTrack(const QJsonObject &o, bool transient);
     QVariantMap playlistInfo(const QJsonObject &o) const;
+    static QVariantMap userInfo(const QJsonObject &o);
+    void updateProfile(const QString &userId, const QVariantMap &fields);
     void publishResults(const QStringList &ids);
 
     void saveToken() const;
@@ -174,6 +192,10 @@ private:
     QStringList m_history;
     QHash<QString, QStringList> m_collections;   // playlistId -> track ids (opened from search)
     QSet<QString> m_loadingCollections;
+    QVariantList m_userResults;
+    QHash<QString, QVariantMap> m_profiles;           // userId -> profile()
+    QHash<QString, QStringList> m_profileTracks;      // "userId/popular", "userId/tracks" -> track ids
+    int m_profilesRevision = 0;
     QSet<QString> m_refreshedPlaylists;          // the account's playlists loaded during this run
     quint64 m_searchSerial = 0;
     bool m_searching = false;
