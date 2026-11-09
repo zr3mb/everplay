@@ -975,6 +975,33 @@ Item {
         s.push({ name: "L17-wait", run: log })
         return s
     }
+    // Scrolling (--tour-scroll): a page scrolled down, another page, Back — the position comes back (home, a
+    // playlist's list, the library); then a while on the home page for the mouse wheel (sent from outside).
+    readonly property bool withScroll: Qt.application.arguments.indexOf("--tour-scroll") >= 0
+    readonly property var scrollSteps: {
+        if (!withScroll)
+            return []
+        const y = () => { const f = root.findFlick(root.target); return f ? Math.round(f.contentY) : -1 }
+        const s = [
+            { name: "Y1-home", run: () => { Nav.finishOnboarding(); Nav.navigate("home") } },
+            { name: "Y2-scroll", run: () => { root.scrollPage(900); console.log("tour: scroll home set", y()) } },
+            { name: "Y3-away", run: () => Nav.navigate("search", { query: "", filter: 0 }) },
+            { name: "Y4-back", run: () => Nav.back() },
+            { name: "Y5-check", run: () => console.log("tour: scroll home after back", y(), "| expected 900") },
+            { name: "Y6-forward", run: () => Nav.forward() },
+            { name: "Y7-back", run: () => Nav.back() },
+            { name: "Y8-check", run: () => console.log("tour: scroll home after forward and back", y()) },
+            { name: "Y9-library", run: () => Nav.navigate("library") },
+            { name: "Y10-scroll", run: () => { root.scrollPage(1500); console.log("tour: scroll library set", y()) } },
+            { name: "Y11-away", run: () => Nav.navigate("home") },
+            { name: "Y12-back", run: () => Nav.back() },
+            { name: "Y13-check", run: () => console.log("tour: scroll library after back", y(), "| expected 1500") },
+            { name: "Y14-home", run: () => { Nav.navigate("home"); console.log("tour: scroll new page starts at", y()) } },
+        ]
+        for (let i = 0; i < 10; ++i)
+            s.push({ name: "Y15-wheel" + i, run: () => console.log("tour: scroll wheel", i, y()) })
+        return s
+    }
     // Discovery (--tour-discover "<query>;<soundcloud query>"): a track's radio and how it grows, the radio
     // after a queue's end (autoplay), a SoundCloud track's radio, then the home page's radios and new artists.
     readonly property bool withDiscover: Qt.application.arguments.indexOf("--tour-discover") >= 0
@@ -1314,7 +1341,7 @@ Item {
         { name: "T7-cat-compact", run: () => { Nav.sidebarCompact = true; Nav.queueOpen = false; Nav.navigate("home") } },
         { name: "T8-back", run: () => { Nav.sidebarCompact = false; Nav.queueOpen = true; Theme.themeId = "everplay" } }
     ]
-    readonly property var steps: withIntro ? introSteps : withRedesign ? redesignSteps : withPlugins ? pluginSteps : withDesign ? designSteps : withAhead ? aheadSteps : withCache ? cacheSteps : withSmall ? smallSteps : withSharedCover ? sharedCoverSteps : withQueue ? queueSteps : withRoomAdd ? roomAddSteps : withAccount ? accountSteps : withTrackOrder ? trackOrderSteps : withOrder ? orderSteps : withFolders ? folderSteps : withResize ? resizeSteps : withPassword ? passwordSteps : withMirrors ? mirrorSteps : withLibrarySync ? librarySyncSteps : withOnline ? onlineSteps : withListen ? listenSteps : withAudioDevice ? audioDeviceSteps : withScProfile ? scProfileSteps : withDiscover ? discoverSteps : withAlign ? alignSteps : withScSeekLiked ? scSeekLikedSteps : withFakeTiming ? fakeTimingSteps : withScSeek ? scSeekSteps : withSearchTitle ? searchTitleSteps : withKaraoke ? karaokeSteps : withScLogin ? scLoginSteps : withSoundCloud ? soundcloudSteps : withRecognize ? recognizeSteps : withThemes ? themeSteps : withStats ? statsSteps : withSearchPlaylists ? searchPlaylistSteps : withOverlayCycle ? overlayCycleSteps : withHotkey ? hotkeySteps : withOverlay ? overlaySteps : withLiked ? likedSteps : withArtist ? artistSteps : withHome ? homeSteps : withLyrics ? lyricSteps : withPlaylists ? playlistSteps : withAlbums ? albumSteps : withSeek ? seekSteps : withPerf ? perfSteps : withCovers ? coverSteps : withMatch ? matchSteps : withEq ? eqSteps : withBig ? bigSteps : withEngine ? engineSteps : withLogin ? loginSteps : baseSteps
+    readonly property var steps: withIntro ? introSteps : withRedesign ? redesignSteps : withPlugins ? pluginSteps : withDesign ? designSteps : withAhead ? aheadSteps : withCache ? cacheSteps : withSmall ? smallSteps : withSharedCover ? sharedCoverSteps : withQueue ? queueSteps : withRoomAdd ? roomAddSteps : withAccount ? accountSteps : withTrackOrder ? trackOrderSteps : withOrder ? orderSteps : withFolders ? folderSteps : withResize ? resizeSteps : withPassword ? passwordSteps : withMirrors ? mirrorSteps : withLibrarySync ? librarySyncSteps : withOnline ? onlineSteps : withListen ? listenSteps : withAudioDevice ? audioDeviceSteps : withScProfile ? scProfileSteps : withDiscover ? discoverSteps : withScroll ? scrollSteps : withAlign ? alignSteps : withScSeekLiked ? scSeekLikedSteps : withFakeTiming ? fakeTimingSteps : withScSeek ? scSeekSteps : withSearchTitle ? searchTitleSteps : withKaraoke ? karaokeSteps : withScLogin ? scLoginSteps : withSoundCloud ? soundcloudSteps : withRecognize ? recognizeSteps : withThemes ? themeSteps : withStats ? statsSteps : withSearchPlaylists ? searchPlaylistSteps : withOverlayCycle ? overlayCycleSteps : withHotkey ? hotkeySteps : withOverlay ? overlaySteps : withLiked ? likedSteps : withArtist ? artistSteps : withHome ? homeSteps : withLyrics ? lyricSteps : withPlaylists ? playlistSteps : withAlbums ? albumSteps : withSeek ? seekSteps : withPerf ? perfSteps : withCovers ? coverSteps : withMatch ? matchSteps : withEq ? eqSteps : withBig ? bigSteps : withEngine ? engineSteps : withLogin ? loginSteps : baseSteps
     property double navStart: 0
     property bool measuring: false
     readonly property var bigSteps: [

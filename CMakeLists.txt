@@ -110,6 +110,7 @@ qt_add_qml_module(Everplay
         qml/components/PlaylistDialog.qml
         qml/components/LogoMark.qml
         qml/components/PageFlick.qml
+        qml/components/ScrollAssist.qml
         qml/components/Panel.qml
         qml/components/PillButton.qml
         qml/components/PlayButton.qml

@@ -18,6 +18,9 @@ Flickable {
     maximumFlickVelocity: 4200
 
     ScrollBar.vertical: ThinScrollBar {}
+    // The wheel's speed and the position kept for Back / Forward.
+    property alias scrollAssist: assist
+    ScrollAssist { id: assist; view: root }
 
     ColumnLayout {
         id: column

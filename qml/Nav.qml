@@ -9,6 +9,11 @@ QtObject {
     property var args: ({})
     property var backStack: []
     property var forwardStack: []
+    // Scroll positions (ScrollAssist): the current page's, kept in its history entry; the one to restore on
+    // the page being shown (0 = from the top); a serial per shown page, so a page on its way out can't write.
+    property real scrollY: 0
+    property real restoreScroll: 0
+    property int pageSerial: 0
 
     // Window layout — remembered between launches.
     property bool queueOpen: Prefs.boolValue("ui/queueOpen", true)
@@ -87,25 +92,25 @@ QtObject {
         a = a || {}
         if (p === page && JSON.stringify(a) === JSON.stringify(args))
             return
-        backStack = backStack.concat([{ page: page, args: args }])
+        backStack = backStack.concat([{ page: page, args: args, scroll: scrollY }])
         forwardStack = []
-        _show(p, a)
+        _show(p, a, 0)
     }
 
     function back() {
         if (!canGoBack) return
         const e = backStack[backStack.length - 1]
         backStack = backStack.slice(0, -1)
-        forwardStack = forwardStack.concat([{ page: page, args: args }])
-        _show(e.page, e.args)
+        forwardStack = forwardStack.concat([{ page: page, args: args, scroll: scrollY }])
+        _show(e.page, e.args, e.scroll || 0)
     }
 
     function forward() {
         if (!canGoForward) return
         const e = forwardStack[forwardStack.length - 1]
         forwardStack = forwardStack.slice(0, -1)
-        backStack = backStack.concat([{ page: page, args: args }])
-        _show(e.page, e.args)
+        backStack = backStack.concat([{ page: page, args: args, scroll: scrollY }])
+        _show(e.page, e.args, e.scroll || 0)
     }
 
     // A page records its state (e.g. the search query) in the current history entry, so going back
@@ -143,7 +148,10 @@ QtObject {
         toastRequested(text, icon || "check")
     }
 
-    function _show(p, a) {
+    function _show(p, a, scroll) {
+        restoreScroll = scroll || 0
+        scrollY = restoreScroll
+        ++pageSerial
         page = p
         args = a
         pageRequested(p, a)

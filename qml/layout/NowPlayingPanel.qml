@@ -52,6 +52,7 @@ Panel {
             clip: true
             boundsBehavior: Flickable.StopAtBounds
             ScrollBar.vertical: ThinScrollBar {}
+            ScrollAssist { view: flick; remember: false }
 
             ColumnLayout {
                 id: column
