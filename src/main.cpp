@@ -1,3 +1,6 @@
+#include <QScreen>
+#include <atomic>
+#include <memory>
 #include "AppPaths.h"
 #include "Language.h"
 #include "Library.h"
@@ -164,6 +167,20 @@ int main(int argc, char *argv[])
             QObject::disconnect(*once);
             delete once;
         });
+    }
+    // EVERPLAY_FPS_DEBUG=1: frames drawn per second (only seconds with frames: an idle window draws none),
+    // next to the refresh rate of the screen the window is on.
+    QTimer fpsTimer;
+    if (qEnvironmentVariableIsSet("EVERPLAY_FPS_DEBUG") && window) {
+        auto frames = std::make_shared<std::atomic<int>>(0);   // frameSwapped comes from the render thread
+        QObject::connect(window, &QQuickWindow::frameSwapped, window, [frames] { ++*frames; }, Qt::DirectConnection);
+        fpsTimer.setInterval(1000);
+        QObject::connect(&fpsTimer, &QTimer::timeout, window, [window, frames] {
+            const int n = frames->exchange(0);
+            if (n > 0)
+                qInfo("fps: %d (screen %s, %.0f Hz)", n, qPrintable(window->screen()->name()), window->screen()->refreshRate());
+        });
+        fpsTimer.start();
     }
     if (perfDebug) {
         stallProbe.setInterval(10);

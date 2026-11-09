@@ -12,6 +12,10 @@ QtObject {
     // Scroll positions (ScrollAssist): the current page's, kept in its history entry; the one to restore on
     // the page being shown (0 = from the top); a serial per shown page, so a page on its way out can't write.
     property real scrollY: 0
+    // How far the page's content scrolled since the last frame (ScrollAssist adds, the motion blur takes).
+    property real motionY: 0
+    function addMotion(dy) { motionY += dy }
+    function takeMotion() { const m = motionY; motionY = 0; return m }
     property real restoreScroll: 0
     property int pageSerial: 0
 

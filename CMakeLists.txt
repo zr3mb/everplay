@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(Everplay VERSION 0.29.0 LANGUAGES CXX)
+project(Everplay VERSION 0.30.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -115,6 +115,7 @@ qt_add_qml_module(Everplay
         qml/components/LogoMark.qml
         qml/components/PageFlick.qml
         qml/components/ScrollAssist.qml
+        qml/components/MotionBlur.qml
         qml/components/Panel.qml
         qml/components/PillButton.qml
         qml/components/PlayButton.qml
@@ -185,6 +186,10 @@ qt_add_qml_module(Everplay
         qml/onboarding/PlaybackStep.qml
         qml/onboarding/IntegrationsStep.qml
         qml/onboarding/DoneStep.qml
+    RESOURCES
+        # Compiled from qml/shaders/motionblur.frag with Qt's qsb (--qt6 --msl 12), kept in the
+        # repository so that builds need no Qt Shader Tools.
+        qml/shaders/motionblur.frag.qsb
 )
 
 # Translations (English is the source language; see src/Language.h)

@@ -141,6 +141,10 @@ Item {
     // Interface motion: every transition's length goes through ms(), so one factor sets how quick the
     // app feels (looping ambient animations keep their own pace).
     readonly property real motion: 0.6
+    // Motion blur on page transitions and scrolling (Main.qml, MotionBlur.qml).
+    // Off by default on Android: a full-screen pass per frame on every flick costs a phone's battery.
+    property bool motionBlur: Prefs.boolValue("ui/motionBlur", Qt.platform.os !== "android")
+    onMotionBlurChanged: Prefs.setValue("ui/motionBlur", motionBlur)
     function ms(base) { return Math.round(base * motion) }
     readonly property int fast: ms(150)
     readonly property int normal: ms(260)

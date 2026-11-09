@@ -79,6 +79,12 @@ Item {
                     }
                 }
                 SettingRow {
+                    icon: "bolt"
+                    title: qsTr("Motion blur")
+                    description: qsTr("Pages that slide in and lists that scroll blur along the motion, like a camera shutter — smoother at high frame rates.")
+                    Toggle { checked: Theme.motionBlur; onToggled: c => Theme.motionBlur = c }
+                }
+                SettingRow {
                     icon: "image"
                     title: qsTr("Background image")
                     description: Theme.wallpaper !== ""

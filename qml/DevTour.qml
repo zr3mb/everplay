@@ -1111,6 +1111,34 @@ Item {
         })
         return s
     }
+    // Motion blur (--tour-blur): pictures taken while a page slides in and while the home page scrolls fast.
+    readonly property bool withBlur: Qt.application.arguments.indexOf("--tour-blur") >= 0
+    function grabSoon(ms, name) {
+        const t = Qt.createQmlObject("import QtQuick; Timer { repeat: false }", root)
+        t.interval = ms
+        t.triggered.connect(() => {
+            root.target.grabToImage(r => console.log("tour: blur shot", name, r.saveToFile(root.dir + "/" + name + ".png")))
+            t.destroy()
+        })
+        t.start()
+    }
+    property real blurSpeed: 0
+    Timer {
+        id: blurScroller
+        interval: 6
+        repeat: true
+        onTriggered: { const f = root.findFlick(root.target); if (f) f.contentY += root.blurSpeed }
+    }
+    readonly property var blurSteps: withBlur ? [
+        { name: "M1-home", run: () => { Nav.finishOnboarding(); Nav.navigate("home") } },
+        { name: "M2-search", run: () => { Nav.navigate("search", { query: "", filter: 0 }); root.grabSoon(70, "M2-slide-70ms") } },
+        { name: "M3-artist", run: () => { Nav.openArtist("Kizo", ""); root.grabSoon(50, "M3-slide-50ms") } },
+        { name: "M4-wait", run: () => {} },
+        { name: "M5-scroll", run: () => { root.blurSpeed = 26; blurScroller.start(); root.grabSoon(300, "M5-scroll-fast") } },
+        { name: "M6-stop", run: () => { blurScroller.stop(); root.grabSoon(500, "M6-still") } },
+        { name: "M7-end", run: () => {} }
+    ] : []
+
     // Scrolling (--tour-scroll): a page scrolled down, another page, Back — the position comes back (home, a
     // playlist's list, the library); then a while on the home page for the mouse wheel (sent from outside).
     readonly property bool withScroll: Qt.application.arguments.indexOf("--tour-scroll") >= 0
@@ -1477,7 +1505,7 @@ Item {
         { name: "T7-cat-compact", run: () => { Nav.sidebarCompact = true; Nav.queueOpen = false; Nav.navigate("home") } },
         { name: "T8-back", run: () => { Nav.sidebarCompact = false; Nav.queueOpen = true; Theme.themeId = "everplay" } }
     ]
-    readonly property var steps: withIntro ? introSteps : withRedesign ? redesignSteps : withPlugins ? pluginSteps : withDesign ? designSteps : withAhead ? aheadSteps : withCache ? cacheSteps : withSmall ? smallSteps : withSharedCover ? sharedCoverSteps : withQueue ? queueSteps : withRoomAdd ? roomAddSteps : withAccount ? accountSteps : withTrackOrder ? trackOrderSteps : withOrder ? orderSteps : withFolders ? folderSteps : withResize ? resizeSteps : withPassword ? passwordSteps : withMirrors ? mirrorSteps : withLibrarySync ? librarySyncSteps : withMobile ? mobileSteps : withOnline ? onlineSteps : withListen ? listenSteps : withAudioDevice ? audioDeviceSteps : withScProfile ? scProfileSteps : withDiscover ? discoverSteps : withScroll ? scrollSteps : withSpotifyArtist ? spotifyArtistSteps : withSources ? sourceSteps : withArtistSongs ? artistSongSteps : withAlign ? alignSteps : withScSeekLiked ? scSeekLikedSteps : withFakeTiming ? fakeTimingSteps : withScSeek ? scSeekSteps : withSearchTitle ? searchTitleSteps : withKaraoke ? karaokeSteps : withScLogin ? scLoginSteps : withSoundCloud ? soundcloudSteps : withRecognize ? recognizeSteps : withThemes ? themeSteps : withStats ? statsSteps : withSearchPlaylists ? searchPlaylistSteps : withOverlayCycle ? overlayCycleSteps : withHotkey ? hotkeySteps : withOverlay ? overlaySteps : withLiked ? likedSteps : withArtist ? artistSteps : withHome ? homeSteps : withLyrics ? lyricSteps : withPlaylists ? playlistSteps : withAlbums ? albumSteps : withSeek ? seekSteps : withPerf ? perfSteps : withCovers ? coverSteps : withMatch ? matchSteps : withEq ? eqSteps : withBig ? bigSteps : withEngine ? engineSteps : withLogin ? loginSteps : baseSteps
+    readonly property var steps: withIntro ? introSteps : withRedesign ? redesignSteps : withPlugins ? pluginSteps : withDesign ? designSteps : withAhead ? aheadSteps : withCache ? cacheSteps : withSmall ? smallSteps : withSharedCover ? sharedCoverSteps : withQueue ? queueSteps : withRoomAdd ? roomAddSteps : withAccount ? accountSteps : withTrackOrder ? trackOrderSteps : withOrder ? orderSteps : withFolders ? folderSteps : withResize ? resizeSteps : withPassword ? passwordSteps : withMirrors ? mirrorSteps : withLibrarySync ? librarySyncSteps : withMobile ? mobileSteps : withOnline ? onlineSteps : withListen ? listenSteps : withAudioDevice ? audioDeviceSteps : withScProfile ? scProfileSteps : withDiscover ? discoverSteps : withScroll ? scrollSteps : withBlur ? blurSteps : withSpotifyArtist ? spotifyArtistSteps : withSources ? sourceSteps : withArtistSongs ? artistSongSteps : withAlign ? alignSteps : withScSeekLiked ? scSeekLikedSteps : withFakeTiming ? fakeTimingSteps : withScSeek ? scSeekSteps : withSearchTitle ? searchTitleSteps : withKaraoke ? karaokeSteps : withScLogin ? scLoginSteps : withSoundCloud ? soundcloudSteps : withRecognize ? recognizeSteps : withThemes ? themeSteps : withStats ? statsSteps : withSearchPlaylists ? searchPlaylistSteps : withOverlayCycle ? overlayCycleSteps : withHotkey ? hotkeySteps : withOverlay ? overlaySteps : withLiked ? likedSteps : withArtist ? artistSteps : withHome ? homeSteps : withLyrics ? lyricSteps : withPlaylists ? playlistSteps : withAlbums ? albumSteps : withSeek ? seekSteps : withPerf ? perfSteps : withCovers ? coverSteps : withMatch ? matchSteps : withEq ? eqSteps : withBig ? bigSteps : withEngine ? engineSteps : withLogin ? loginSteps : baseSteps
     property double navStart: 0
     property bool measuring: false
     readonly property var bigSteps: [

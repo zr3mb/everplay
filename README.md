@@ -301,6 +301,17 @@ Appearance and layout settings (`[ui]` in `settings.ini`) are remembered between
 - **Covers:** Spotify serves playlist covers as WebP — the build needs the Qt image formats plugins
   (MSYS2: `mingw-w64-ucrt-x86_64-qt6-imageformats`; the Linux AppImage gets them from `qtimageformats`).
 
+## Motion and frame rate
+
+- **Frame rate:** Qt Quick draws in step with the screen's refresh, so on a 144/165 Hz monitor animations run at
+  that rate (`EVERPLAY_FPS_DEBUG=1` prints the frames drawn each second and the screen's refresh rate).
+- **Motion blur** (*Settings → Appearance*, on by default): while a page slides in or a page's list scrolls, the
+  pages are drawn through `MotionBlur` — the picture averaged along the way it moved during the frame (16 samples,
+  a 360° shutter, at most 56 px). Only while something moves; a still page stays sharp. The shader is
+  `qml/shaders/motionblur.frag`, compiled with `qsb --qt6 --msl 12 -o motionblur.frag.qsb motionblur.frag` and kept
+  compiled in the repository, so builds don't need Qt Shader Tools; if a platform can't load it, the effect stays
+  off. `--tour <dir> --tour-blur` takes pictures mid-motion.
+
 ## Where things come from
 
 Wherever sources mix, a badge says where something is from (YouTube Music, SoundCloud, Spotify, yours): the
