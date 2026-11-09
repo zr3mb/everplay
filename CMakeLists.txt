@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(Everplay VERSION 0.28.0 LANGUAGES CXX)
+project(Everplay VERSION 0.28.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -114,6 +114,7 @@ qt_add_qml_module(Everplay
         qml/components/PlaylistDialog.qml
         qml/components/LogoMark.qml
         qml/components/PageFlick.qml
+        qml/components/ScrollAssist.qml
         qml/components/Panel.qml
         qml/components/PillButton.qml
         qml/components/PlayButton.qml

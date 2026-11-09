@@ -126,6 +126,7 @@ Item {
             flickDeceleration: 3200
             maximumFlickVelocity: 4200
             ScrollBar.vertical: ThinScrollBar {}
+            ScrollAssist { view: tracksView }
             model: page.libraryRows
 
             header: Item {
@@ -175,6 +176,7 @@ Item {
         cacheBuffer: 600
         boundsBehavior: Flickable.StopAtBounds
         flickDeceleration: 3200
+        ScrollAssist { view: grid }
         maximumFlickVelocity: 4200
         ScrollBar.vertical: ThinScrollBar {}
 

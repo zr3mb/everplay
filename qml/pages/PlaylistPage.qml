@@ -175,6 +175,7 @@ Item {
         flickDeceleration: 3200
         maximumFlickVelocity: 4200
         ScrollBar.vertical: ThinScrollBar {}
+        ScrollAssist { view: flick }
         model: page.rows
 
         header: Item {
