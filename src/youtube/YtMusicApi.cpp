@@ -720,9 +720,19 @@ YtMusicApi::Artist YtMusicApi::parseArtist(const QJsonObject &root)
             }
             if (items.isEmpty())
                 continue;   // videos, live performances…
-            a.sections << QVariantMap {
-                { "title", runsText(dig(shelf, "header.musicCarouselShelfBasicHeaderRenderer.title")) },
-                { "kind", kind }, { "items", items } };
+            // A carousel shows its first ten; "More" leads to the whole list (all singles, all albums).
+            const QJsonObject header = dig(shelf, "header.musicCarouselShelfBasicHeaderRenderer").toObject();
+            QJsonObject more = dig(header, "moreContentButton.buttonRenderer.navigationEndpoint.browseEndpoint").toObject();
+            if (more.isEmpty())
+                more = dig(header, "title.runs").toArray().first().toObject()
+                           .value("navigationEndpoint").toObject().value("browseEndpoint").toObject();
+            QVariantMap section { { "title", runsText(header.value("title")) }, { "kind", kind }, { "items", items } };
+            const QString moreId = more.value("browseId").toString();
+            if (!moreId.isEmpty() && kind == QLatin1String("albums")) {   // a playlists page is laid out otherwise
+                section.insert("moreId", moreId);
+                section.insert("moreParams", more.value("params").toString());
+            }
+            a.sections << section;
         }
     }
     // A channel (remixes, mixes uploaded to YouTube) has no songs, only its videos — they take the songs' place.
@@ -731,6 +741,56 @@ YtMusicApi::Artist YtMusicApi::parseArtist(const QJsonObject &root)
         a.videosOnly = true;
     }
     return a;
+}
+
+void YtMusicApi::fetchCards(const QString &browseId, const QString &params,
+                            std::function<void(const QVariantList &cards, const QString &error)> callback)
+{
+    fetchCardsPage(browseId, params, {}, {}, 5, std::move(callback));
+}
+
+void YtMusicApi::fetchCardsPage(const QString &browseId, const QString &params, const QString &continuation,
+                                QVariantList collected, int pagesLeft,
+                                std::function<void(const QVariantList &cards, const QString &error)> callback)
+{
+    // A grid of a hundred cards, then its continuation (the new style in the body) for the next hundred.
+    QJsonObject body;
+    if (continuation.isEmpty()) {
+        body.insert("browseId", browseId);
+        if (!params.isEmpty())
+            body.insert("params", params);
+    } else {
+        body.insert("continuation", continuation);
+    }
+    call(QStringLiteral("browse"), body, [=, this](const QJsonObject &json, const QString &error) mutable {
+        if (!error.isEmpty()) {
+            callback(collected, collected.isEmpty() ? error : QString());
+            return;
+        }
+        QList<QJsonObject> found;
+        collect(json, QStringLiteral("musicTwoRowItemRenderer"), found);
+        QSet<QString> seen;
+        for (const QVariant &c : std::as_const(collected))
+            seen.insert(c.toMap().value("playlistId").toString() + c.toMap().value("browseId").toString());
+        int added = 0;
+        for (const QJsonObject &item : std::as_const(found)) {
+            const QVariantMap card = parseCard(item);
+            const QString key = card.value("playlistId").toString() + card.value("browseId").toString();
+            if (card.isEmpty() || seen.contains(key))
+                continue;
+            seen.insert(key);
+            collected << card;
+            ++added;
+        }
+        QList<QJsonObject> commands;
+        collect(json, QStringLiteral("continuationCommand"), commands);
+        const QString next = commands.isEmpty() ? QString() : commands.first().value("token").toString();
+        if (next.isEmpty() || added == 0 || pagesLeft <= 1) {
+            callback(collected, collected.isEmpty() ? tr("Nothing found") : QString());
+            return;
+        }
+        fetchCardsPage(browseId, params, next, collected, pagesLeft - 1, callback);
+    });
 }
 
 void YtMusicApi::fetchArtist(const QString &browseId, std::function<void(const Artist &, const QString &)> callback)

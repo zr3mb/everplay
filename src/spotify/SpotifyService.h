@@ -50,6 +50,7 @@ class SpotifyService : public QObject
     Q_PROPERTY(int likedCount READ likedCount NOTIFY dataChanged)
     Q_PROPERTY(int playlistCount READ playlistCount NOTIFY dataChanged)
     Q_PROPERTY(QString lastSync READ lastSync NOTIFY dataChanged)
+    Q_PROPERTY(int artistsRevision READ artistsRevision NOTIFY artistsChanged)   // an artist page or album arrived
 
 public:
     static SpotifyService *instance();
@@ -73,6 +74,17 @@ public:
     Q_INVOKABLE void cancelLogin();
     Q_INVOKABLE void logout();
     Q_INVOKABLE void refresh();
+
+    // An artist's page (needs the Spotify sign-in): { loading, error, name, photo, followers, genres,
+    // albums: [{ id, title, subtitle, cover, count, kind: "album"|"single" }], singles: [...] } — {} before loadArtist.
+    // The top tracks are Library.spotifyArtistRows(); an album opened from it, Library.spotifyAlbumRows().
+    int artistsRevision() const { return m_artistsRevision; }
+    Q_INVOKABLE void loadArtist(const QString &artistId);
+    Q_INVOKABLE QVariantMap artist(const QString &artistId) const { return m_artists.value(artistId); }
+    Q_INVOKABLE void ensureAlbum(const QString &albumId);
+    Q_INVOKABLE bool albumLoading(const QString &albumId) const { return m_loadingAlbums.contains(albumId); }
+    QStringList artistTrackIds(const QString &artistId) const { return m_artistTracks.value(artistId); }
+    QStringList albumTrackIds(const QString &albumId) const { return m_albums.value(albumId); }
 
     // For Library / Player
     QList<Track> tracks() const;
@@ -102,6 +114,8 @@ signals:
     void loggingInChanged();
     void syncingChanged();
     void dataChanged();
+    void artistsChanged();
+    void tracksAdded(const QList<Track> &tracks);   // new transient tracks (artist pages) for the end of the model
     void settingsChanged();
     void notice(const QString &text, const QString &icon);
 
@@ -138,7 +152,7 @@ private:
     void syncNextPlaylist(QStringList queue);
     void syncLiked();
     void finishSync(const QString &error);
-    QStringList storeItems(const QJsonArray &items, bool wrapped);
+    QStringList storeItems(const QJsonArray &items, bool wrapped, bool transient = false, const QJsonObject &albumOf = {});
 
     void loadCache();
     void saveCache() const;
@@ -171,6 +185,14 @@ private:
     bool m_syncing = false;
     QString m_syncError;
     QDateTime m_lastSync;
+
+    QHash<QString, QVariantMap> m_artists;          // artist id -> artist()
+    QHash<QString, QStringList> m_artistTracks;     // artist id -> top tracks
+    QHash<QString, QStringList> m_albums;           // album id -> tracks (opened from an artist page)
+    QSet<QString> m_loadingAlbums;
+    int m_artistsRevision = 0;
+    void updateArtist(const QString &artistId, const QVariantMap &fields);
+    void publishTracks(const QStringList &ids);
 
     QHash<QString, QString> m_matches;              // "sp:<id>" -> YouTube videoId ("" = not found)
     QSet<QString> m_manual;                         // matches the user chose — never replaced automatically

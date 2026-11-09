@@ -41,7 +41,7 @@ Item {
         } else if (item.playlistId) {
             Nav.navigate("playlist", { kind: "ytcollection", playlistId: item.playlistId, title: item.title,
                                        subtitle: item.subtitle, cover: item.cover,
-                                       label: item.kind === "album" ? qsTr("ALBUM") : qsTr("PLAYLIST") })
+                                       label: item.kind === "album" ? qsTr("ALBUM · YOUTUBE MUSIC") : qsTr("PLAYLIST · YOUTUBE MUSIC") })
         } else {
             Nav.toast(qsTr("This can't be opened yet"), "music")
         }
@@ -137,6 +137,10 @@ Item {
                     Layout.alignment: Qt.AlignBottom
                     spacing: 8
 
+                    SourceBadge {
+                        visible: page.browseId !== ""
+                        source: "youtube"
+                    }
                     Text {
                         text: qsTr("ARTIST")
                         color: Theme.textDim
@@ -311,7 +315,13 @@ Item {
                 ColumnLayout {
                     width: parent.width
                     spacing: 14
-                    SectionHeader { title: section.modelData.title }
+                    SectionHeader {
+                        title: section.modelData.title
+                        // The carousel's first ten — the rest of the singles / albums on request.
+                        action: section.modelData.moreId && !section.modelData.complete
+                                ? (section.modelData.loading ? qsTr("Loading…") : qsTr("Show all")) : ""
+                        onActionClicked: YouTube.loadArtistSection(page.browseId, section.index)
+                    }
                     Flow {
                         Layout.fillWidth: true
                         spacing: 18

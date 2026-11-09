@@ -484,6 +484,7 @@ Item {
                             width: radioGrid.cellW
                             shadow: radioShadow
                             title: qsTr("%1 radio").arg(modelData.artist)
+                            source: modelData.source || ""
                             subtitle: qsTr("From %1").arg(modelData.title)
                             colorA: modelData.colorA
                             colorB: modelData.colorB
@@ -764,6 +765,7 @@ Item {
                                     shadow: albumShadow
                                     opacity: modelData.p.hidden ? 0.55 : 1
                                     title: modelData.p.name
+                                    source: Nav.playlistSource(modelData.p)
                                     subtitle: modelData.p.count !== undefined && modelData.p.count >= 0
                                               ? qsTr("%n tracks", "", modelData.p.count) : ""
                                     colorA: modelData.p.colorA

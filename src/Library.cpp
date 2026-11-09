@@ -192,6 +192,7 @@ Library::Library(QObject *parent)
     connect(SoundCloudService::instance(), &SoundCloudService::dataChanged, this, &Library::requestRebuild);
     connect(SoundCloudService::instance(), &SoundCloudService::accountChanged, this, &Library::requestRebuild);
     connect(SoundCloudService::instance(), &SoundCloudService::tracksAdded, m_tracks, &TrackModel::appendTracks);
+    connect(SpotifyService::instance(), &SpotifyService::tracksAdded, m_tracks, &TrackModel::appendTracks);
     // Shared playlists, a listening room's queue, opened links: their tracks join the model as they come.
     connect(OnlineService::instance(), &OnlineService::tracksAdded, m_tracks, &TrackModel::appendTracks);
     connect(OnlineService::instance(), &OnlineService::playlistsChanged, this, [this] {
@@ -1421,6 +1422,17 @@ QVariantList Library::soundCloudCollectionRows(const QString &playlistId)
     return rowsOfIds(sc->collectionTrackIds(playlistId));
 }
 
+QVariantList Library::spotifyArtistRows(const QString &artistId) const
+{
+    return rowsOfIds(SpotifyService::instance()->artistTrackIds(artistId));
+}
+
+QVariantList Library::spotifyAlbumRows(const QString &albumId)
+{
+    SpotifyService::instance()->ensureAlbum(albumId);
+    return rowsOfIds(SpotifyService::instance()->albumTrackIds(albumId));
+}
+
 QVariantList Library::soundCloudProfileRows(const QString &userId, const QString &which) const
 {
     return rowsOfIds(SoundCloudService::instance()->profileTrackIds(userId, which));
@@ -1430,6 +1442,10 @@ QVariantList Library::rowsForContext(const QString &context)
 {
     if (context == QLatin1String("library"))
         return libraryRows();
+    if (context.startsWith(QLatin1String("spa:")))
+        return spotifyArtistRows(context.mid(4));
+    if (context.startsWith(QLatin1String("spalbum:")))
+        return spotifyAlbumRows(context.mid(8));
     if (context.startsWith(QLatin1String("scu:"))) {   // "scu:<user id>/<popular|tracks>"
         const QString rest = context.mid(4);
         const qsizetype slash = rest.indexOf(QChar('/'));

@@ -301,7 +301,7 @@ QVariantList Recommendations::radioSeeds() const
         if (row < 0)
             continue;
         const Track &t = model->at(row);
-        out << QVariantMap { { "row", row }, { "id", t.id }, { "title", t.title }, { "artist", t.artist }, { "cover", t.cover },
+        out << QVariantMap { { "row", row }, { "id", t.id }, { "source", t.source }, { "title", t.title }, { "artist", t.artist }, { "cover", t.cover },
                              { "colorA", t.colorA }, { "colorB", t.colorB }, { "seed", t.seed } };
         if (out.size() >= kRadioSeeds)
             break;

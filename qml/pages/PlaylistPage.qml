@@ -17,6 +17,7 @@ Item {
         // A collection's tracks are appended to the model, not rebuilt into it; genres fill in later.
         if (Library.tracks.revision < 0 || (a.kind === "ytcollection" && YouTube.resultsRevision < 0)
             || (a.kind === "sccollection" && SoundCloud.resultsRevision < 0)
+            || (a.kind === "spcollection" && Spotify.artistsRevision < 0)
                 || (a.kind === "genre" && Library.genresRevision < 0))
             return {}
         if (a.kind === "album") {
@@ -47,6 +48,13 @@ Item {
                      colorA: "#d9a27e", colorB: "#5a3a28", seed: 0, cover: a.cover || "", icon: "",
                      round: false, rows: Library.soundCloudCollectionRows(a.playlistId),
                      loading: SoundCloud.collectionLoading(a.playlistId) }
+        }
+        if (a.kind === "spcollection") {
+            // An album opened from a Spotify artist — loaded from Spotify, played from YouTube Music.
+            return { label: a.label || qsTr("ALBUM · SPOTIFY"), title: a.title || "", meta: a.subtitle ? [a.subtitle] : [],
+                     colorA: "#1db954", colorB: "#14532d", seed: 0, cover: a.cover || "", icon: "",
+                     round: false, rows: Library.spotifyAlbumRows(a.playlistId),
+                     loading: Spotify.albumLoading(a.playlistId) }
         }
         if (a.kind === "ytcollection") {
             // An album / playlist opened from an artist profile — loaded from YouTube Music, not in the library.
@@ -89,6 +97,7 @@ Item {
         if (a.kind === "artist") return "artist:" + a.artist
         if (a.kind === "ytcollection") return "ytc:" + a.playlistId
         if (a.kind === "sccollection") return "scc:" + a.playlistId
+        if (a.kind === "spcollection") return "spalbum:" + a.playlistId
         if (a.kind === "genre") return "genre:" + a.key
         const p = Library.playlists[a.index || 0]
         if (!p) return ""

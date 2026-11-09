@@ -87,7 +87,7 @@ Item {
     }
     function openPlaylist(p) {
         Nav.navigate("playlist", { kind: "ytcollection", playlistId: p.id, title: p.title, subtitle: p.subtitle,
-                                   cover: p.cover, label: qsTr("PLAYLIST") })
+                                   cover: p.cover, label: qsTr("PLAYLIST · YOUTUBE MUSIC") })
     }
     CardShadow { id: playlistShadow; size: 168 }
     CardShadow { id: profileShadow; size: 132; radius: 66 }
@@ -240,10 +240,12 @@ Item {
     // The playlists found, in a column beside the tracks (below them in a narrow window): yours whose
     // name fits, then public ones on YouTube Music.
     readonly property var foundPlaylists: {
-        const own = ownPlaylists.map(o => ({ own: true, index: o.index, playlist: o.p, subtitle: qsTr("Your playlist") }))
-        const pub = playlists.map((p, i) => ({ own: false, data: p, subtitle: p.subtitle || "",
+        const own = ownPlaylists.map(o => ({ own: true, index: o.index, playlist: o.p, source: Nav.playlistSource(o.p) || "own",
+                                             subtitle: Nav.playlistSource(o.p) ? qsTr("In your library") : "" }))
+        const pub = playlists.map((p, i) => ({ own: false, data: p, subtitle: p.subtitle || "", source: "youtube",
                                                playlist: { name: p.title, cover: p.cover || "", seed: i, icon: "library" } }))
-        const sc = soundcloudPlaylists.map((p, i) => ({ own: false, sc: true, data: p, subtitle: "SoundCloud · " + p.subtitle + " · " + qsTr("%n tracks", "", p.count),
+        const sc = soundcloudPlaylists.map((p, i) => ({ own: false, sc: true, data: p, source: "soundcloud",
+                                                       subtitle: p.subtitle + " · " + qsTr("%n tracks", "", p.count),
                                                        playlist: { name: p.title, cover: p.cover || "", seed: i + 2, icon: "wavecloud" } }))
         return own.concat(pub, sc)
     }
@@ -296,6 +298,7 @@ Item {
                 width: ListView.view.width
                 playlist: entry.playlist || ({})
                 subtitle: entry.subtitle || ""
+                source: entry.source || ""
                 onClicked: entry.own ? page.openOwn(entry.index)
                            : entry.sc ? page.openSoundCloud(entry.data) : page.openPlaylist(entry.data)
                 onPlayClicked: entry.own ? page.playOwn(entry.index)
@@ -479,6 +482,7 @@ Item {
                         round: true
                         title: modelData.name
                         subtitle: modelData.subtitle || qsTr("Profile")
+                        source: "soundcloud"
                         cover: modelData.photo
                         colorA: "#d9a27e"
                         colorB: "#5a3a28"
@@ -541,6 +545,7 @@ Item {
                         shadow: playlistShadow
                         title: entry.p.name || ""
                         subtitle: qsTr("Your playlist")
+                        source: Nav.playlistSource(entry.p) || "own"
                         colorA: entry.p.colorA || Theme.surface
                         colorB: entry.p.colorB || Theme.surface
                         seed: entry.p.seed || 0
@@ -560,6 +565,7 @@ Item {
                         shadow: playlistShadow
                         title: entry.title || ""
                         subtitle: entry.subtitle || ""
+                        source: "youtube"
                         cover: entry.cover || ""
                         seed: index
                         revealDelay: (page.ownPlaylists.length + index) * 30
@@ -575,7 +581,8 @@ Item {
                         width: 168
                         shadow: playlistShadow
                         title: entry.title || ""
-                        subtitle: "SoundCloud · " + (entry.subtitle || "") + " · " + qsTr("%n tracks", "", entry.count || 0)
+                        subtitle: (entry.subtitle || "") + " · " + qsTr("%n tracks", "", entry.count || 0)
+                        source: "soundcloud"
                         cover: entry.cover || ""
                         seed: index + 2
                         revealDelay: (page.ownPlaylists.length + page.playlists.length + index) * 30

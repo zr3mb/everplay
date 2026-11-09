@@ -241,7 +241,9 @@ Appearance and layout settings (`[ui]` in `settings.ini`) are remembered between
   artist in the Library. The page shows the YouTube Music profile — photo, description, subscribers, popular songs,
   albums, singles, playlists and related artists (sections named as YouTube Music names them) — plus the artist's
   tracks from your library. Artists of local files are looked up on YouTube Music by name. Albums and playlists
-  opened from a profile are loaded on demand and don't become part of the library.
+  opened from a profile are loaded on demand and don't become part of the library. YouTube Music shows only the
+  first ten singles / albums of a section; *Show all* next to it loads the whole list (up to 500), and *Show all*
+  next to *Popular* opens the artist's song list (YouTube Music itself keeps at most 150 there).
   The artist of a SoundCloud track opens the uploader's **SoundCloud profile** instead: photo, description,
   followers, popular tracks, albums, playlists and the newest uploads. Profiles also come up in search — all of
   them with the *SoundCloud* filter, and under *All* the ones whose name is exactly what was typed.
@@ -262,6 +264,12 @@ Appearance and layout settings (`[ui]` in `settings.ini`) are remembered between
 
 - **What it does:** syncs your Spotify playlists (your own and followed ones) and liked songs into Everplay. They
   show up in the sidebar ("Liked on Spotify" + one entry per playlist) and in the library.
+- **Artist pages:** while signed in, the artist of a Spotify track opens their Spotify page — photo, followers,
+  genres, popular tracks, albums and singles (Web API `/artists`, `/top-tracks`, `/albums`); an album opens with
+  its tracks. They play through YouTube Music like every Spotify track and don't join the library. *On YouTube
+  Music* leads to the same artist there. Signed out, the artist is looked up on YouTube Music as before. Tracks
+  synced before this version get the artist link at the next sync.
+  (`--tour <dir> --tour-spotify-artist` signs in from the browser profile, syncs and opens an artist.)
 - **Playback:** Spotify doesn't let third-party apps stream its audio, so each Spotify track is matched to
   YouTube Music when you play it (search "artist title", then the best match by title, artist and duration) and
   played through the same yt-dlp path as YouTube tracks. Matches are cached in `spotify-matches.json`; a track
@@ -292,6 +300,14 @@ Appearance and layout settings (`[ui]` in `settings.ini`) are remembered between
   own app, playlists whose `snapshot_id` didn't change aren't downloaded again.
 - **Covers:** Spotify serves playlist covers as WebP — the build needs the Qt image formats plugins
   (MSYS2: `mingw-w64-ucrt-x86_64-qt6-imageformats`; the Linux AppImage gets them from `qtimageformats`).
+
+## Where things come from
+
+Wherever sources mix, a badge says where something is from (YouTube Music, SoundCloud, Spotify, yours): the
+playlists found by search (a pill on each card, and before the second line in the side column), the home page's
+radios and playlists, and an icon after the title in the home page's narrow track grids (the wide lists have a
+source column). Artist pages carry the badge in their header, and albums and playlists opened from them say it
+in their label (*ALBUM · YOUTUBE MUSIC*, *ALBUM · SPOTIFY*). `--tour <dir> --tour-sources "<query>"` shows them.
 
 ## Discovering new music — how it works
 

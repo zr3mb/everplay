@@ -90,6 +90,8 @@ public:
     // songsPlaylistId, sections, loading, error }; songs are in Library.artistSongRows(browseId).
     Q_INVOKABLE void loadArtist(const QString &browseId);
     Q_INVOKABLE QVariantMap artist(const QString &browseId) const;
+    // The whole list behind a section of an artist page (its "moreId"): replaces the section's first ten.
+    Q_INVOKABLE void loadArtistSection(const QString &browseId, int section);
     int artistsRevision() const { return m_artistsRevision; }
     int resultsRevision() const { return m_resultsRevision; }
     // Finds the channel of an artist known only by name (local files); the result comes as artistFound().

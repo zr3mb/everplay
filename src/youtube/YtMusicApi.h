@@ -73,6 +73,9 @@ public:
     // The track's radio — similar tracks, the way "Start radio" in YouTube Music picks them.
     void radio(const QString &videoId, TracksCallback callback);
     void fetchArtist(const QString &browseId, std::function<void(const Artist &, const QString &error)> callback);
+    // A page of album / playlist cards (an artist's "More": all singles, all albums), as parseCard gives them.
+    void fetchCards(const QString &browseId, const QString &params,
+                    std::function<void(const QVariantList &cards, const QString &error)> callback);
     // Finds the artist's channel by name (exact, case-insensitive match in the search results);
     // an empty id without an error = not found.
     void findArtistId(const QString &name, std::function<void(const QString &browseId, const QString &error)> callback);
@@ -105,6 +108,9 @@ public:
     static Lyrics parsePlainLyrics(const QJsonValue &root);
 
 private:
+    void fetchCardsPage(const QString &browseId, const QString &params, const QString &continuation,
+                        QVariantList collected, int pagesLeft,
+                        std::function<void(const QVariantList &cards, const QString &error)> callback);
     void browsePage(const QString &browseId, const QString &continuation, bool commandStyle,
                     QList<Track> collected, int pagesLeft, TracksCallback callback);
 

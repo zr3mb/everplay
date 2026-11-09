@@ -684,6 +684,43 @@ void YouTubeService::loadArtist(const QString &browseId)
     });
 }
 
+void YouTubeService::loadArtistSection(const QString &browseId, int section)
+{
+    QVariantMap artist = m_artists.value(browseId);
+    QVariantList sections = artist.value("sections").toList();
+    if (section < 0 || section >= sections.size())
+        return;
+    QVariantMap s = sections.at(section).toMap();
+    const QString moreId = s.value("moreId").toString();
+    if (moreId.isEmpty() || s.value("loading").toBool() || s.value("complete").toBool())
+        return;
+    s.insert("loading", true);
+    sections[section] = s;
+    artist.insert("sections", sections);
+    m_artists.insert(browseId, artist);
+    QTimer::singleShot(0, this, [this] { ++m_artistsRevision; emit artistsChanged(); });   // called from QML
+    m_api.fetchCards(moreId, s.value("moreParams").toString(),
+                     [this, browseId, section](const QVariantList &cards, const QString &error) {
+        QVariantMap artist = m_artists.value(browseId);
+        QVariantList sections = artist.value("sections").toList();
+        if (section >= sections.size())
+            return;
+        QVariantMap s = sections.at(section).toMap();
+        s.remove("loading");
+        if (!cards.isEmpty()) {
+            s.insert("items", cards);
+            s.insert("complete", true);
+        } else {
+            emit notice(tr("Couldn't load the whole list: %1").arg(error), QStringLiteral("close"));
+        }
+        sections[section] = s;
+        artist.insert("sections", sections);
+        m_artists.insert(browseId, artist);
+        ++m_artistsRevision;
+        emit artistsChanged();
+    });
+}
+
 QVariantMap YouTubeService::artist(const QString &browseId) const
 {
     QVariantMap a = m_artists.value(browseId);

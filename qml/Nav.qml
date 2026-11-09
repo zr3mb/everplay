@@ -139,6 +139,14 @@ QtObject {
             openSoundCloudProfile(browseId.slice(4), name)
             return
         }
+        // A Spotify track's artist: their Spotify page while signed in there, otherwise YouTube Music by name.
+        if (String(browseId || "").startsWith("spa:")) {
+            if (Spotify.connected) {
+                navigate("spartist", { artistId: browseId.slice(4), name: name || "" })
+                return
+            }
+            browseId = ""
+        }
         const first = browseId ? name : String(name).split(/,\s+| & | feat\.? | ft\.? /i)[0].trim()
         navigate("artist", { name: first, browseId: browseId || "" })
     }
@@ -146,6 +154,15 @@ QtObject {
     function openSoundCloudProfile(userId, name, photo) {
         immersive = false
         navigate("scprofile", { userId: userId, name: name || "", photo: photo || "" })
+    }
+
+    // Where a Library.playlists entry comes from, for SourceBadge ("" = the user's own or a built-in list).
+    function playlistSource(p) {
+        const kind = (p || {}).kind || ""
+        if (kind === "ytplaylist") return "youtube"
+        if (kind === "spplaylist" || kind === "spotifyliked") return "spotify"
+        if (kind === "scplaylist" || kind === "scliked") return "soundcloud"
+        return ""
     }
 
     function toast(text, icon) {

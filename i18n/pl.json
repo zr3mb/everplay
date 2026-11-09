@@ -1259,5 +1259,15 @@
   "Couldn't start a radio of %1: %2": "Nie udało się uruchomić radia utworu %1: %2",
   "this track wasn't found on YouTube Music": "nie znaleziono tego utworu w YouTube Music",
   "YouTube Music has no radio for it": "YouTube Music nie ma dla niego radia",
-  "When the queue ends, a radio of the last track plays: similar songs, the ones you haven't heard lately first. Offline — the next playlist or your library.": "Gdy kolejka się skończy, gra radio ostatniego utworu: podobne piosenki, najpierw te, których ostatnio nie było. Bez internetu — następna playlista albo Twoja biblioteka."
+  "When the queue ends, a radio of the last track plays: similar songs, the ones you haven't heard lately first. Offline — the next playlist or your library.": "Gdy kolejka się skończy, gra radio ostatniego utworu: podobne piosenki, najpierw te, których ostatnio nie było. Bez internetu — następna playlista albo Twoja biblioteka.",
+  "Couldn't load the whole list: %1": "Nie udało się wczytać całej listy: %1",
+  "ALBUM · YOUTUBE MUSIC": "ALBUM · YOUTUBE MUSIC",
+  "ALBUM · SPOTIFY": "ALBUM · SPOTIFY",
+  "SINGLE · SPOTIFY": "SINGIEL · SPOTIFY",
+  "Yours": "Twoje",
+  "Couldn't load the artist from Spotify: %1": "Nie udało się wczytać wykonawcy ze Spotify: %1",
+  "Couldn't load the album from Spotify: %1": "Nie udało się wczytać albumu ze Spotify: %1",
+  "Sign in to Spotify (Sources) to see artist pages": "Zaloguj się do Spotify (Źródła), żeby widzieć strony wykonawców",
+  "Singles and EPs": "Single i EP",
+  "Nothing found": "Nic nie znaleziono"
 }
