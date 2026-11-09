@@ -7,11 +7,12 @@ Item {
     id: root
     property var playlist: ({})
     property string subtitle: ""   // a second line (who made it, how many tracks); taller row
+    property string source: ""     // where it comes from (SourceBadge), before the second line
     signal clicked
     signal playClicked
 
     implicitWidth: 230
-    implicitHeight: subtitle !== "" ? 48 : 34
+    implicitHeight: subtitle !== "" || source !== "" ? 48 : 34
 
     HoverHandler { id: hover; cursorShape: Qt.PointingHandCursor }
     TapHandler { onTapped: root.clicked() }
@@ -26,7 +27,7 @@ Item {
         id: cover
         x: 4
         anchors.verticalCenter: parent.verticalCenter
-        width: root.subtitle !== "" ? 38 : 26
+        width: root.subtitle !== "" || root.source !== "" ? 38 : 26
         height: width
         radius: Theme.r(root.subtitle !== "" ? 8 : 7)
         decorated: false
@@ -54,13 +55,24 @@ Item {
             font.weight: Font.Medium
             elide: Text.ElideRight
         }
-        Text {
+        Row {
             width: parent.width
-            visible: root.subtitle !== ""
-            text: root.subtitle
-            color: Theme.textDim
-            font.pixelSize: 12
-            elide: Text.ElideRight
+            visible: root.subtitle !== "" || root.source !== ""
+            spacing: 6
+            SourceBadge {
+                id: badge
+                visible: root.source !== ""
+                source: root.source || "local"
+                plain: true
+                height: 16
+            }
+            Text {
+                width: parent.width - (badge.visible ? badge.width + 6 : 0)
+                text: (badge.visible && root.subtitle !== "" ? "· " : "") + root.subtitle
+                color: Theme.textDim
+                font.pixelSize: 12
+                elide: Text.ElideRight
+            }
         }
     }
     IconButton {

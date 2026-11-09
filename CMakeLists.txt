@@ -152,6 +152,7 @@ qt_add_qml_module(Everplay
         qml/pages/PlaylistPage.qml
         qml/pages/ArtistPage.qml
         qml/pages/SoundCloudProfilePage.qml
+        qml/pages/SpotifyArtistPage.qml
         qml/pages/SourcesPage.qml
         qml/pages/SettingsPage.qml
         qml/pages/StatsPage.qml

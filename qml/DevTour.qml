@@ -975,6 +975,101 @@ Item {
         s.push({ name: "L17-wait", run: log })
         return s
     }
+    // A Spotify artist's page (--tour-spotify-artist, with a signed-in Spotify browser profile): signs in from
+    // the profile, syncs, opens the artist of a library track, an album of theirs, and plays a top track.
+    readonly property bool withSpotifyArtist: Qt.application.arguments.indexOf("--tour-spotify-artist") >= 0
+    readonly property var spotifyArtistSteps: {
+        if (!withSpotifyArtist)
+            return []
+        const s = [{ name: "S1-login", run: () => { Nav.finishOnboarding(); Player.muted = true; Spotify.loginWithBrowser() } }]
+        for (let i = 0; i < 10; ++i)
+            s.push({ name: "S2-wait" + i, run: () => console.log("tour: spotify connected", Spotify.connected, "| logging in", Spotify.loggingIn, Spotify.loginStatus) })
+        s.push({ name: "S3-sync", run: () => Spotify.refresh() })
+        for (let i = 0; i < 12; ++i)
+            s.push({ name: "S4-wait" + i, run: () => console.log("tour: spotify syncing", Spotify.syncing, "| liked", Spotify.likedCount, "| playlists", Spotify.playlistCount) })
+        s.push({ name: "S5-artist", run: () => {
+            const rows = Library.libraryRows().filter(r => { const t = Library.tracks.get(r); return t.source === "spotify" && String(t.artistId).startsWith("spa:") })
+            console.log("tour: spotify tracks with an artist", rows.length)
+            if (rows.length) { const t = Library.tracks.get(rows[0]); console.log("tour: spotify opening", t.artist, t.artistId); Nav.openArtist(t.artist, t.artistId) }
+        } })
+        s.push({ name: "S6-wait", run: () => {} })
+        s.push({ name: "S7-page", run: () => {
+            const id = Nav.args.artistId || ""
+            const a = Spotify.artist(id)
+            console.log("tour: spotify page", Nav.page, "|", a.name, "| followers", a.followers, "| genres", (a.genres || []).join(","), "| error", a.error || "",
+                        "| top", Library.spotifyArtistRows(id).length, "| albums", (a.albums || []).length, "| singles", (a.singles || []).length)
+            const al = (a.albums || []).concat(a.singles || [])[0]
+            root.album = al ? { id: al.id, artist: id } : { artist: id }
+        } })
+        s.push({ name: "S8-album", run: () => { if (root.album.id) Nav.navigate("playlist", { kind: "spcollection", playlistId: root.album.id, title: "album" }) } })
+        s.push({ name: "S9-wait", run: () => {} })
+        s.push({ name: "S10-rows", run: () => {
+            console.log("tour: spotify album rows", root.album.id ? Library.spotifyAlbumRows(root.album.id).length : 0)
+            Nav.back()
+        } })
+        s.push({ name: "S11-play", run: () => { const r = Library.spotifyArtistRows(root.album.artist); if (r.length) Player.playFrom(r, r[0], "spa:" + root.album.artist) } })
+        s.push({ name: "S12-wait", run: () => {} })
+        s.push({ name: "S13-wait", run: () => {} })
+        s.push({ name: "S14-playing", run: () => console.log("tour: spotify playing", Player.title, "|", Player.artist, "| playing", Player.playing, "| pos", Player.position.toFixed(1)) })
+        return s
+    }
+    // Where things come from (--tour-sources "<query>"): the playlists found (the side column and, in a narrow
+    // window, the cards), an artist page with its sections' "Show all", the home page.
+    readonly property bool withSources: Qt.application.arguments.indexOf("--tour-sources") >= 0
+    readonly property var sourceSteps: {
+        if (!withSources)
+            return []
+        const q = Qt.application.arguments[Qt.application.arguments.indexOf("--tour-sources") + 1]
+        return [
+            { name: "B1-search", run: () => { Nav.finishOnboarding(); Nav.navigate("search", { query: q, filter: 0 }) } },
+            { name: "B2-wait", run: () => {} },
+            { name: "B3-wait", run: () => {} },
+            { name: "B4-narrow", run: () => { Nav.queueOpen = true; root.target.Window.window.width = 1180 } },
+            { name: "B5-scroll", run: () => { const f = root.findFlick(root.target); if (f) f.contentY = Math.max(0, f.contentHeight - f.height) } },
+            { name: "B6-wide", run: () => { root.target.Window.window.width = 1420; Nav.openArtist("Kizo", "") } },
+            { name: "B7-wait", run: () => {} },
+            { name: "B8-scroll", run: () => { const f = root.findFlick(root.target); if (f) f.contentY = 900 } },
+            { name: "B9-home", run: () => Nav.navigate("home") },
+            { name: "B10-wait", run: () => {} },
+            { name: "B11-scroll", run: () => { const f = root.findFlick(root.target); if (f) f.contentY = 800 } },
+            { name: "B12-end", run: () => {} }
+        ]
+    }
+    // Artist profiles' song lists (--tour-artist-songs "<name>;<name>;…"): each artist's top songs, the link to
+    // all of them and how many that list holds.
+    readonly property bool withArtistSongs: Qt.application.arguments.indexOf("--tour-artist-songs") >= 0
+    readonly property var artistSongSteps: {
+        if (!withArtistSongs)
+            return []
+        const names = Qt.application.arguments[Qt.application.arguments.indexOf("--tour-artist-songs") + 1].split(";")
+        const s = [{ name: "N0-start", run: () => Nav.finishOnboarding() }]
+        names.forEach((n, i) => {
+            s.push({ name: "N" + i + "a-open", run: () => Nav.openArtist(n, "") })
+            s.push({ name: "N" + i + "b-wait", run: () => {} })
+            s.push({ name: "N" + i + "c-wait", run: () => {} })
+            s.push({ name: "N" + i + "d-all", run: () => {
+                const id = Nav.args.browseId || YouTube.knownArtistId(n)
+                const a = YouTube.artist(id)
+                console.log("tour: artist", n, "|", id, "| top", Library.artistSongRows(id).length, "| videosOnly", a.videosOnly,
+                            "| all", a.songsPlaylistId || "-", "| sections", (a.sections || []).map(x => x.title + ":" + x.items.length).join(", "))
+                if (a.songsPlaylistId) Library.collectionRows(a.songsPlaylistId)
+                root.album = { playlistId: a.songsPlaylistId || "" }
+                ;(a.sections || []).forEach((x, k) => { if (x.moreId) YouTube.loadArtistSection(id, k) })
+                root.album.artist = id
+            } })
+            s.push({ name: "N" + i + "e-wait", run: () => {} })
+            s.push({ name: "N" + i + "f-wait", run: () => {} })
+            s.push({ name: "N" + i + "g-count", run: () => {
+                const pid = root.album.playlistId
+                console.log("tour: artist", n, "| all songs", pid ? Library.collectionRows(pid).length : 0, "| loading", pid ? YouTube.collectionLoading(pid) : false)
+                const a = YouTube.artist(root.album.artist || "")
+                ;(a.sections || []).filter(x => x.complete).forEach(x => console.log("tour: artist", n, "|", x.title, "|",
+                    x.items.slice(0, 3).concat(x.items.slice(-3)).map(c => c.title + " [" + c.subtitle + "]").join(" | ")))
+                console.log("tour: artist", n, "| sections now", (a.sections || []).map(x => x.title + ":" + x.items.length + (x.moreId ? (x.complete ? " (all)" : " (more)") : "")).join(", "))
+            } })
+        })
+        return s
+    }
     // Scrolling (--tour-scroll): a page scrolled down, another page, Back — the position comes back (home, a
     // playlist's list, the library); then a while on the home page for the mouse wheel (sent from outside).
     readonly property bool withScroll: Qt.application.arguments.indexOf("--tour-scroll") >= 0
@@ -1341,7 +1436,7 @@ Item {
         { name: "T7-cat-compact", run: () => { Nav.sidebarCompact = true; Nav.queueOpen = false; Nav.navigate("home") } },
         { name: "T8-back", run: () => { Nav.sidebarCompact = false; Nav.queueOpen = true; Theme.themeId = "everplay" } }
     ]
-    readonly property var steps: withIntro ? introSteps : withRedesign ? redesignSteps : withPlugins ? pluginSteps : withDesign ? designSteps : withAhead ? aheadSteps : withCache ? cacheSteps : withSmall ? smallSteps : withSharedCover ? sharedCoverSteps : withQueue ? queueSteps : withRoomAdd ? roomAddSteps : withAccount ? accountSteps : withTrackOrder ? trackOrderSteps : withOrder ? orderSteps : withFolders ? folderSteps : withResize ? resizeSteps : withPassword ? passwordSteps : withMirrors ? mirrorSteps : withLibrarySync ? librarySyncSteps : withOnline ? onlineSteps : withListen ? listenSteps : withAudioDevice ? audioDeviceSteps : withScProfile ? scProfileSteps : withDiscover ? discoverSteps : withScroll ? scrollSteps : withAlign ? alignSteps : withScSeekLiked ? scSeekLikedSteps : withFakeTiming ? fakeTimingSteps : withScSeek ? scSeekSteps : withSearchTitle ? searchTitleSteps : withKaraoke ? karaokeSteps : withScLogin ? scLoginSteps : withSoundCloud ? soundcloudSteps : withRecognize ? recognizeSteps : withThemes ? themeSteps : withStats ? statsSteps : withSearchPlaylists ? searchPlaylistSteps : withOverlayCycle ? overlayCycleSteps : withHotkey ? hotkeySteps : withOverlay ? overlaySteps : withLiked ? likedSteps : withArtist ? artistSteps : withHome ? homeSteps : withLyrics ? lyricSteps : withPlaylists ? playlistSteps : withAlbums ? albumSteps : withSeek ? seekSteps : withPerf ? perfSteps : withCovers ? coverSteps : withMatch ? matchSteps : withEq ? eqSteps : withBig ? bigSteps : withEngine ? engineSteps : withLogin ? loginSteps : baseSteps
+    readonly property var steps: withIntro ? introSteps : withRedesign ? redesignSteps : withPlugins ? pluginSteps : withDesign ? designSteps : withAhead ? aheadSteps : withCache ? cacheSteps : withSmall ? smallSteps : withSharedCover ? sharedCoverSteps : withQueue ? queueSteps : withRoomAdd ? roomAddSteps : withAccount ? accountSteps : withTrackOrder ? trackOrderSteps : withOrder ? orderSteps : withFolders ? folderSteps : withResize ? resizeSteps : withPassword ? passwordSteps : withMirrors ? mirrorSteps : withLibrarySync ? librarySyncSteps : withOnline ? onlineSteps : withListen ? listenSteps : withAudioDevice ? audioDeviceSteps : withScProfile ? scProfileSteps : withDiscover ? discoverSteps : withScroll ? scrollSteps : withSpotifyArtist ? spotifyArtistSteps : withSources ? sourceSteps : withArtistSongs ? artistSongSteps : withAlign ? alignSteps : withScSeekLiked ? scSeekLikedSteps : withFakeTiming ? fakeTimingSteps : withScSeek ? scSeekSteps : withSearchTitle ? searchTitleSteps : withKaraoke ? karaokeSteps : withScLogin ? scLoginSteps : withSoundCloud ? soundcloudSteps : withRecognize ? recognizeSteps : withThemes ? themeSteps : withStats ? statsSteps : withSearchPlaylists ? searchPlaylistSteps : withOverlayCycle ? overlayCycleSteps : withHotkey ? hotkeySteps : withOverlay ? overlaySteps : withLiked ? likedSteps : withArtist ? artistSteps : withHome ? homeSteps : withLyrics ? lyricSteps : withPlaylists ? playlistSteps : withAlbums ? albumSteps : withSeek ? seekSteps : withPerf ? perfSteps : withCovers ? coverSteps : withMatch ? matchSteps : withEq ? eqSteps : withBig ? bigSteps : withEngine ? engineSteps : withLogin ? loginSteps : baseSteps
     property double navStart: 0
     property bool measuring: false
     readonly property var bigSteps: [

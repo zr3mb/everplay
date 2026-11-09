@@ -198,6 +198,15 @@ Item {
             elide: Text.ElideRight
         }
 
+        SourceBadge {
+            // Narrow grids (the home page's picks) have no source column: just its icon.
+            visible: root.compact && root.t.source !== undefined && root.t.source !== "local"
+            Layout.alignment: Qt.AlignVCenter
+            plain: true
+            showLabel: false
+            source: root.t.source || "local"
+        }
+
         Item {
             visible: !root.compact && root.width > 860   // the title comes first in narrower lists
             Layout.preferredWidth: 132

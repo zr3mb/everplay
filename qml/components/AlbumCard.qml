@@ -13,6 +13,7 @@ Item {
     property string cover: ""
     property var mosaic: []   // a playlist without its own cover: a 2×2 collage
     property bool round: false
+    property string source: ""   // where it comes from (SourceBadge): a pill on the cover's corner
     property bool playing: false
     property int revealDelay: 0
     property bool animateIn: true   // false: shown at once (e.g. in a list built after its page appeared)
@@ -100,6 +101,15 @@ Item {
                 shadowOpacity: root.shadowOpacity
                 shadowVerticalOffset: root.shadowOffset
             }
+        }
+
+        SourceBadge {
+            visible: root.source !== ""
+            source: root.source || "local"
+            onCover: true
+            showLabel: !root.round && root.width >= 140
+            anchors { top: parent.top; topMargin: root.round ? 4 : 8 }
+            x: root.round ? (parent.width - width) / 2 : 8
         }
 
         PlayFab {

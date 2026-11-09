@@ -56,13 +56,16 @@ QUrl apiUrl(const QString &path)
 QJsonObject trackToJson(const Track &t)
 {
     return { { "id", t.path }, { "title", t.title }, { "artist", t.artist }, { "album", t.album },
-             { "duration", t.duration }, { "cover", t.cover } };
+             { "duration", t.duration }, { "cover", t.cover }, { "artistId", t.artistId.mid(4) } };
 }
 
+// artistId: the (first) artist's Spotify id — "spa:<id>" opens their Spotify page (SpotifyArtistPage).
 Track makeTrack(const QString &spotifyId, const QString &title, const QString &artist, const QString &album,
-                int duration, const QString &cover)
+                int duration, const QString &cover, const QString &artistId = {})
 {
     Track t;
+    if (!artistId.isEmpty())
+        t.artistId = QStringLiteral("spa:") + artistId;
     t.id = QStringLiteral("sp:") + spotifyId;
     t.path = spotifyId;
     t.source = QStringLiteral("spotify");
@@ -753,8 +756,12 @@ QString SpotifyService::storeWebTrack(const QJsonObject &data, const QString &ur
     if (!uri.startsWith(QLatin1String("spotify:track:")) || (!type.isEmpty() && type != QLatin1String("Track")))
         return {};   // podcast episodes, local files, unavailable tracks
     QStringList artists;
-    for (const QJsonValue &a : data.value("artists").toObject().value("items").toArray())
+    QString artistId;
+    for (const QJsonValue &a : data.value("artists").toObject().value("items").toArray()) {
         artists << a.toObject().value("profile").toObject().value("name").toString();
+        if (artistId.isEmpty() && a.toObject().value("uri").toString().startsWith(QLatin1String("spotify:artist:")))
+            artistId = a.toObject().value("uri").toString().mid(15);
+    }
     const QJsonObject album = data.value("albumOfTrack").toObject();
     QJsonObject duration = data.value("trackDuration").toObject();
     if (duration.isEmpty())
@@ -762,7 +769,7 @@ QString SpotifyService::storeWebTrack(const QJsonObject &data, const QString &ur
     const Track track = makeTrack(uri.mid(14), data.value("name").toString(), artists.join(QStringLiteral(", ")),
                                   album.value("name").toString(),
                                   int(duration.value("totalMilliseconds").toDouble() / 1000),
-                                  webImage(album.value("coverArt").toObject().value("sources").toArray()));
+                                  webImage(album.value("coverArt").toObject().value("sources").toArray()), artistId);
     m_tracks.insert(track.id, track);
     return track.id;
 }
@@ -842,7 +849,7 @@ void SpotifyService::syncLiked()
     });
 }
 
-QStringList SpotifyService::storeItems(const QJsonArray &items, bool wrapped)
+QStringList SpotifyService::storeItems(const QJsonArray &items, bool wrapped, bool transient, const QJsonObject &albumOf)
 {
     QStringList ids;
     for (const QJsonValue &v : items) {
@@ -853,13 +860,18 @@ QStringList SpotifyService::storeItems(const QJsonArray &items, bool wrapped)
         QStringList artists;
         for (const QJsonValue &a : t.value("artists").toArray())
             artists << a.toObject().value("name").toString();
-        const QJsonObject album = t.value("album").toObject();
+        const QString artistId = t.value("artists").toArray().first().toObject().value("id").toString();
+        // An album's own track list leaves the album out of each track.
+        const QJsonObject album = t.contains("album") ? t.value("album").toObject() : albumOf;
         const QJsonArray images = album.value("images").toArray();
         // Images come largest first — the middle size (~300 px) is plenty for covers.
         const QString cover = images.isEmpty() ? QString()
                             : images.at(std::min<int>(1, int(images.size()) - 1)).toObject().value("url").toString();
-        const Track track = makeTrack(spotifyId, t.value("name").toString(), artists.join(QStringLiteral(", ")),
-                                      album.value("name").toString(), t.value("duration_ms").toInt() / 1000, cover);
+        Track track = makeTrack(spotifyId, t.value("name").toString(), artists.join(QStringLiteral(", ")),
+                                album.value("name").toString(), t.value("duration_ms").toInt() / 1000, cover, artistId);
+        // A track from an artist page stays out of the library — unless the library has it already.
+        const auto existing = m_tracks.constFind(track.id);
+        track.transient = transient && (existing == m_tracks.cend() || existing->transient);
         m_tracks.insert(track.id, track);
         if (!ids.contains(track.id))
             ids << track.id;
@@ -1077,6 +1089,104 @@ void SpotifyService::rematch(const QString &trackId)
     });
 }
 
+// ---- artist pages ---------------------------------------------------------------------
+
+void SpotifyService::updateArtist(const QString &artistId, const QVariantMap &fields)
+{
+    QVariantMap &a = m_artists[artistId];
+    for (auto it = fields.cbegin(); it != fields.cend(); ++it)
+        a.insert(it.key(), it.value());
+    ++m_artistsRevision;
+    emit artistsChanged();
+}
+
+void SpotifyService::publishTracks(const QStringList &ids)
+{
+    QList<Track> added;
+    for (const QString &id : ids)
+        if (const auto it = m_tracks.constFind(id); it != m_tracks.cend())
+            added << *it;
+    if (!added.isEmpty())
+        emit tracksAdded(added);   // the model appends the ones it doesn't have
+}
+
+void SpotifyService::loadArtist(const QString &artistId)
+{
+    if (artistId.isEmpty() || m_artists.contains(artistId))
+        return;
+    if (!connected()) {
+        m_artists.insert(artistId, { { "error", tr("Sign in to Spotify (Sources) to see artist pages") } });
+        QTimer::singleShot(0, this, [this] { ++m_artistsRevision; emit artistsChanged(); });
+        return;
+    }
+    // Three parts on their own; "loading" is cleared by the last.
+    auto pending = std::make_shared<int>(3);
+    auto finished = [this, artistId, pending] {
+        if (--*pending == 0)
+            updateArtist(artistId, { { "loading", false } });
+    };
+    m_artists.insert(artistId, { { "loading", true } });
+    QTimer::singleShot(0, this, [this] { ++m_artistsRevision; emit artistsChanged(); });   // called from QML
+
+    get(apiUrl(QStringLiteral("/artists/") + artistId), [this, artistId, finished](const QJsonObject &json, const QString &error) {
+        if (!error.isEmpty()) {
+            updateArtist(artistId, { { "error", error } });
+        } else {
+            const QJsonArray images = json.value("images").toArray();
+            QStringList genres;
+            for (const QJsonValue &g : json.value("genres").toArray())
+                genres << g.toString();
+            updateArtist(artistId, { { "name", json.value("name").toString() },
+                                     { "photo", images.isEmpty() ? QString() : images.first().toObject().value("url").toString() },
+                                     { "followers", json.value("followers").toObject().value("total").toInt() },
+                                     { "genres", genres }, { "url", json.value("external_urls").toObject().value("spotify").toString() } });
+        }
+        finished();
+    });
+    get(apiUrl(QStringLiteral("/artists/%1/top-tracks?market=from_token").arg(artistId)),
+        [this, artistId, finished](const QJsonObject &json, const QString &) {
+        const QStringList ids = storeItems(json.value("tracks").toArray(), false, true);
+        m_artistTracks.insert(artistId, ids);
+        publishTracks(ids);
+        finished();
+    });
+    get(apiUrl(QStringLiteral("/artists/%1/albums?include_groups=album,single&limit=50&market=from_token").arg(artistId)),
+        [this, artistId, finished](const QJsonObject &json, const QString &) {
+        QVariantList albums, singles;
+        for (const QJsonValue &v : json.value("items").toArray()) {
+            const QJsonObject o = v.toObject();
+            const QJsonArray images = o.value("images").toArray();
+            const QString type = o.value("album_type").toString();
+            const QVariantMap card { { "id", o.value("id").toString() }, { "title", o.value("name").toString() },
+                                     { "subtitle", o.value("release_date").toString().left(4) },
+                                     { "cover", images.isEmpty() ? QString() : images.first().toObject().value("url").toString() },
+                                     { "count", o.value("total_tracks").toInt() }, { "kind", type } };
+            (type == QLatin1String("album") ? albums : singles) << card;
+        }
+        updateArtist(artistId, { { "albums", albums }, { "singles", singles } });
+        finished();
+    });
+}
+
+void SpotifyService::ensureAlbum(const QString &albumId)
+{
+    if (albumId.isEmpty() || m_albums.contains(albumId) || m_loadingAlbums.contains(albumId))
+        return;
+    m_loadingAlbums.insert(albumId);
+    QTimer::singleShot(0, this, [this] { ++m_artistsRevision; emit artistsChanged(); });   // "loading" (called from QML)
+    get(apiUrl(QStringLiteral("/albums/%1?market=from_token").arg(albumId)), [this, albumId](const QJsonObject &json, const QString &error) {
+        m_loadingAlbums.remove(albumId);
+        if (!error.isEmpty())
+            emit notice(tr("Couldn't load the album from Spotify: %1").arg(error), QStringLiteral("close"));
+        const QJsonObject album { { "name", json.value("name") }, { "images", json.value("images") } };
+        const QStringList ids = storeItems(json.value("tracks").toObject().value("items").toArray(), false, true, album);
+        m_albums.insert(albumId, ids);
+        publishTracks(ids);
+        ++m_artistsRevision;
+        emit artistsChanged();
+    });
+}
+
 // ---- cache --------------------------------------------------------------------------
 
 void SpotifyService::loadCache()
@@ -1088,7 +1198,8 @@ void SpotifyService::loadCache()
         for (const QJsonValue &v : root.value("tracks").toArray()) {
             const QJsonObject o = v.toObject();
             const Track t = makeTrack(o.value("id").toString(), o.value("title").toString(), o.value("artist").toString(),
-                                      o.value("album").toString(), o.value("duration").toInt(), o.value("cover").toString());
+                                      o.value("album").toString(), o.value("duration").toInt(), o.value("cover").toString(),
+                                      o.value("artistId").toString());
             m_tracks.insert(t.id, t);
         }
         m_liked = fromArray(root.value("liked").toArray());
@@ -1120,7 +1231,8 @@ void SpotifyService::saveCache() const
 {
     QJsonArray tracks;
     for (const Track &t : m_tracks)
-        tracks.append(trackToJson(t));
+        if (!t.transient)
+            tracks.append(trackToJson(t));
     QJsonObject lists;
     for (auto it = m_playlistTracks.cbegin(); it != m_playlistTracks.cend(); ++it)
         lists.insert(it.key(), toArray(it.value()));
