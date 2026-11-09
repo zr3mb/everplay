@@ -975,6 +975,73 @@ Item {
         s.push({ name: "L17-wait", run: log })
         return s
     }
+    // Discovery (--tour-discover "<query>;<soundcloud query>"): a track's radio and how it grows, the radio
+    // after a queue's end (autoplay), a SoundCloud track's radio, then the home page's radios and new artists.
+    readonly property bool withDiscover: Qt.application.arguments.indexOf("--tour-discover") >= 0
+    readonly property var discoverSteps: {
+        if (!withDiscover)
+            return []
+        const arg = Qt.application.arguments[Qt.application.arguments.indexOf("--tour-discover") + 1].split(";")
+        const queue = label => {
+            const ahead = Player.queueAhead
+            console.log("tour: discover", label, "| context", Player.queueContext, "| playing", Player.title, "-", Player.artist,
+                        "| ahead", ahead.length, "|", ahead.slice(0, 6).map(r => Library.tracks.get(r).artist + " / " + Library.tracks.get(r).title).join(" | "))
+        }
+        const s = [
+            { name: "V1-search", run: () => { Nav.finishOnboarding(); Player.muted = true; Nav.navigate("search", { query: arg[0], filter: 2 }) } },
+            { name: "V2-wait", run: () => {} },
+            { name: "V3-radio", run: () => { const r = Library.onlineResults(); if (r.length) Player.startRadio(r[0]) } },
+            { name: "V4-wait", run: () => {} },
+            { name: "V5-station", run: () => queue("station") },
+            { name: "V6-near-end", run: () => { const a = Player.queueAhead; if (a.length > 2) Player.jumpTo(a[a.length - 2]) } },
+            { name: "V7-wait", run: () => {} },
+            { name: "V8-grown", run: () => queue("grown") },
+            // Autoplay: one track alone, near its end — a radio of it follows.
+            { name: "V9-single", run: () => { const r = Library.onlineResults(); if (r.length > 1) Player.playFrom([r[1]], r[1]) } },
+            { name: "V10-wait", run: () => {} },
+            { name: "V11-seek", run: () => { queue("single"); Player.seek(Math.max(0, Player.duration - 4)) } },
+            { name: "V12-wait", run: () => {} },
+            { name: "V13-wait", run: () => {} },
+            { name: "V14-after", run: () => queue("after the end") },
+            { name: "V15-sc", run: () => Nav.navigate("search", { query: arg[1] || arg[0], filter: 3 }) },
+            { name: "V16-wait", run: () => {} },
+            { name: "V17-scradio", run: () => { const r = Library.soundCloudResults(); if (r.length) Player.startRadio(r[0]) } },
+            { name: "V18-wait", run: () => {} },
+            { name: "V19-scstation", run: () => queue("soundcloud station") },
+            { name: "V20-home", run: () => { Recommendations.refresh(); Nav.navigate("home") } }
+        ]
+        for (let i = 0; i < 8; ++i)
+            s.push({ name: "V21-wait" + i, run: () => {} })
+        s.push({ name: "V22-home", run: () => {
+            console.log("tour: discover home | radios", Recommendations.radioSeeds.length, "|",
+                        Recommendations.radioSeeds.map(x => x.artist).join(", "), "| recommended", Library.recommendedRows().length,
+                        "| new artists", Library.newArtistRows().length, "|",
+                        Library.newArtistRows().slice(0, 5).map(r => Library.tracks.get(r).artist).join(", "))
+        } })
+        s.push({ name: "V23-scrolled", run: () => {
+            const find = item => { if (item.objectName === "homeRadios") return item; for (let i = 0; i < item.children.length; ++i) { const f = find(item.children[i]); if (f) return f } return null }
+            const r = find(root.target)
+            console.log("tour: discover radios section", r ? "y " + Math.round(r.y) + " h " + Math.round(r.height) + " visible " + r.visible : "missing")
+            let f = r
+            while (f && f.contentY === undefined)
+                f = f.parent
+            if (f) {
+                const at = r.mapToItem(f.contentItem, 0, 0).y
+                console.log("tour: discover radios at", Math.round(at), "of", Math.round(f.contentHeight))
+                f.contentY = Math.max(0, at - 40)
+            }
+        } })
+        s.push({ name: "V24-check", run: () => {
+            const find = item => { if (item.objectName === "homeRadios") return item; for (let i = 0; i < item.children.length; ++i) { const f = find(item.children[i]); if (f) return f } return null }
+            const r = find(root.target)
+            let f = r
+            while (f && f.contentY === undefined)
+                f = f.parent
+            console.log("tour: discover check | contentY", f ? Math.round(f.contentY) : -1, "| radios on screen at", r ? Math.round(r.mapToItem(null, 0, 0).y) : -1,
+                        "| children", r ? r.children[0].children[0].children.length : -1)
+        } })
+        return s
+    }
     // A SoundCloud profile (--tour-sc-profile "<query>"): the profiles found, the first one opened, its
     // popular track played, then the profile opened again from the playing track's artist.
     readonly property bool withScProfile: Qt.application.arguments.indexOf("--tour-sc-profile") >= 0
@@ -1247,7 +1314,7 @@ Item {
         { name: "T7-cat-compact", run: () => { Nav.sidebarCompact = true; Nav.queueOpen = false; Nav.navigate("home") } },
         { name: "T8-back", run: () => { Nav.sidebarCompact = false; Nav.queueOpen = true; Theme.themeId = "everplay" } }
     ]
-    readonly property var steps: withIntro ? introSteps : withRedesign ? redesignSteps : withPlugins ? pluginSteps : withDesign ? designSteps : withAhead ? aheadSteps : withCache ? cacheSteps : withSmall ? smallSteps : withSharedCover ? sharedCoverSteps : withQueue ? queueSteps : withRoomAdd ? roomAddSteps : withAccount ? accountSteps : withTrackOrder ? trackOrderSteps : withOrder ? orderSteps : withFolders ? folderSteps : withResize ? resizeSteps : withPassword ? passwordSteps : withMirrors ? mirrorSteps : withLibrarySync ? librarySyncSteps : withOnline ? onlineSteps : withListen ? listenSteps : withAudioDevice ? audioDeviceSteps : withScProfile ? scProfileSteps : withAlign ? alignSteps : withScSeekLiked ? scSeekLikedSteps : withFakeTiming ? fakeTimingSteps : withScSeek ? scSeekSteps : withSearchTitle ? searchTitleSteps : withKaraoke ? karaokeSteps : withScLogin ? scLoginSteps : withSoundCloud ? soundcloudSteps : withRecognize ? recognizeSteps : withThemes ? themeSteps : withStats ? statsSteps : withSearchPlaylists ? searchPlaylistSteps : withOverlayCycle ? overlayCycleSteps : withHotkey ? hotkeySteps : withOverlay ? overlaySteps : withLiked ? likedSteps : withArtist ? artistSteps : withHome ? homeSteps : withLyrics ? lyricSteps : withPlaylists ? playlistSteps : withAlbums ? albumSteps : withSeek ? seekSteps : withPerf ? perfSteps : withCovers ? coverSteps : withMatch ? matchSteps : withEq ? eqSteps : withBig ? bigSteps : withEngine ? engineSteps : withLogin ? loginSteps : baseSteps
+    readonly property var steps: withIntro ? introSteps : withRedesign ? redesignSteps : withPlugins ? pluginSteps : withDesign ? designSteps : withAhead ? aheadSteps : withCache ? cacheSteps : withSmall ? smallSteps : withSharedCover ? sharedCoverSteps : withQueue ? queueSteps : withRoomAdd ? roomAddSteps : withAccount ? accountSteps : withTrackOrder ? trackOrderSteps : withOrder ? orderSteps : withFolders ? folderSteps : withResize ? resizeSteps : withPassword ? passwordSteps : withMirrors ? mirrorSteps : withLibrarySync ? librarySyncSteps : withOnline ? onlineSteps : withListen ? listenSteps : withAudioDevice ? audioDeviceSteps : withScProfile ? scProfileSteps : withDiscover ? discoverSteps : withAlign ? alignSteps : withScSeekLiked ? scSeekLikedSteps : withFakeTiming ? fakeTimingSteps : withScSeek ? scSeekSteps : withSearchTitle ? searchTitleSteps : withKaraoke ? karaokeSteps : withScLogin ? scLoginSteps : withSoundCloud ? soundcloudSteps : withRecognize ? recognizeSteps : withThemes ? themeSteps : withStats ? statsSteps : withSearchPlaylists ? searchPlaylistSteps : withOverlayCycle ? overlayCycleSteps : withHotkey ? hotkeySteps : withOverlay ? overlaySteps : withLiked ? likedSteps : withArtist ? artistSteps : withHome ? homeSteps : withLyrics ? lyricSteps : withPlaylists ? playlistSteps : withAlbums ? albumSteps : withSeek ? seekSteps : withPerf ? perfSteps : withCovers ? coverSteps : withMatch ? matchSteps : withEq ? eqSteps : withBig ? bigSteps : withEngine ? engineSteps : withLogin ? loginSteps : baseSteps
     property double navStart: 0
     property bool measuring: false
     readonly property var bigSteps: [

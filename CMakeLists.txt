@@ -51,6 +51,7 @@ qt_add_qml_module(Everplay
         src/Library.h           src/Library.cpp
         src/Playlists.h         src/Playlists.cpp
         src/Recommendations.h   src/Recommendations.cpp
+        src/Radio.h             src/Radio.cpp
         src/ListeningHistory.h  src/ListeningHistory.cpp
         src/ArtistGenres.h      src/ArtistGenres.cpp
         src/PlayerController.h  src/PlayerController.cpp

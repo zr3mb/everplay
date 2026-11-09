@@ -171,6 +171,9 @@ public:
     Q_INVOKABLE void seek(double seconds);
     Q_INVOKABLE void cycleRepeat();
     Q_INVOKABLE void toggleLiked();
+    // A radio of the track at `row` (Radio): it plays (or keeps playing) and tracks like it follow;
+    // the station grows while it plays. The queue's context is "radio:<seed id>".
+    Q_INVOKABLE void startRadio(int row);
 
     // Playlist / album mix: { enabled, style, length }.
     Q_INVOKABLE QVariantMap mixFor(const QString &context) const;
@@ -267,6 +270,8 @@ private:
     QStringList queueIds(const QVariantList &rows);
     void startQueue(const QStringList &ids, int pos, const QString &context);
     bool continueAfterQueue();
+    void extendRadio();        // near the end of a radio's queue: more from the current track's radio
+    void prepareAutoRadio();   // the queue's last track: a radio to go on with when it ends (autoplay)
     void skipAfterError(const QString &message);
     void checkStall(double dt);
     void countListening(double dt);
@@ -312,6 +317,9 @@ private:
     bool m_autoplayAfterResolve = false;
     QString m_context;
     bool m_autoplay = true;
+    bool m_radioExtending = false;
+    QString m_autoRadioSeed;           // the track the prepared radio is of
+    QStringList m_autoRadio;
     bool m_wantPlay = false;           // the user expects music (cleared by pause) — errors then skip ahead
     int m_failures = 0;                // failed tracks in a row — stops skipping after a few
     QElapsedTimer m_loadClock;         // EVERPLAY_STREAM_DEBUG: time from a track change to sound

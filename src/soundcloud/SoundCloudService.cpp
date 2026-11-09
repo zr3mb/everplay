@@ -752,6 +752,25 @@ void SoundCloudService::fetchDescription(const QString &trackId, std::function<v
     });
 }
 
+void SoundCloudService::fetchRelated(const QString &trackId, std::function<void(const QStringList &, const QString &)> done)
+{
+    get(QStringLiteral("/tracks/%1/related").arg(numericId(trackId)), QUrlQuery { { "limit", "50" } },
+        [this, trackId, done](const QJsonValue &json, const QString &error) {
+        QStringList ids;
+        for (const QJsonValue &v : json.toObject().value("collection").toArray()) {
+            if (v.toObject().value("policy").toString() == QLatin1String("SNIP"))
+                continue;   // 30 s previews make a poor radio
+            const Track t = storeTrack(v.toObject(), true);
+            if (!t.id.isEmpty() && t.id != trackId)
+                ids << t.id;
+        }
+        const QString key = QStringLiteral("related:") + trackId;
+        m_profileTracks.insert(key, ids);   // kept with the profiles' tracks: in memory, playable
+        publishResults(ids);
+        done(ids, error);
+    });
+}
+
 // ---- search ---------------------------------------------------------------------
 
 void SoundCloudService::search(const QString &query)

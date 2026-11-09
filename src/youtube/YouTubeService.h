@@ -123,6 +123,9 @@ public:
     // Recently played YouTube Music tracks (ListeningHistory): kept in the model like the recommendations.
     void setHistory(const QList<Track> &tracks);
     const QStringList &recommendedIds() const { return m_recommended; }
+    // Tracks of a radio (Radio), kept playable under `key` like an opened album; the oldest radios go
+    // once there are many. Returns their ids.
+    QStringList keepRadio(const QString &key, const QList<Track> &tracks);
     static QJsonObject trackJson(const Track &t);
     static Track trackFromJson(const QJsonObject &o);
     bool isLiked(const QString &trackId) const { return m_likedSet.contains(trackId); }
@@ -189,6 +192,7 @@ private:
     QHash<QString, QString> m_artistIdByName;     // lower-case name -> browseId ("" = not on YouTube Music)
     QHash<QString, QStringList> m_collections;    // playlistId -> track ids (albums, "all songs")
     QSet<QString> m_loadingCollections;
+    QStringList m_radioKeys;                      // radios in m_collections, oldest first
     QString m_searchQuery;
     quint64 m_searchSerial = 0;
     bool m_searching = false;

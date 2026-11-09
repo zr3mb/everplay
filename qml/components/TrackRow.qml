@@ -282,6 +282,17 @@ Item {
             contentItem: ColumnLayout {
                 spacing: 2
 
+                MenuEntry {
+                    visible: !Player.inRoom && root.t.source !== "radio"
+                    Layout.fillWidth: true
+                    icon: "radio"
+                    text: qsTr("Start radio")
+                    onTriggered: {
+                        menu.close()
+                        Player.startRadio(root.trackIndex)
+                    }
+                }
+
                 // ---- playlists ----
                 MenuEntry {
                     Layout.fillWidth: true

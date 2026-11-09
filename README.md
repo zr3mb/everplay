@@ -254,6 +254,27 @@ Appearance and layout settings (`[ui]` in `settings.ini`) are remembered between
 - **Covers:** Spotify serves playlist covers as WebP — the build needs the Qt image formats plugins
   (MSYS2: `mingw-w64-ucrt-x86_64-qt6-imageformats`; the Linux AppImage gets them from `qtimageformats`).
 
+## Discovering new music — how it works
+
+- **Track radio:** *Start radio* in a track's ⋯ menu, or the radio button in the player bar for what plays. The
+  track plays on (or starts) and similar songs follow: YouTube Music's radio of it, SoundCloud's related tracks for a
+  SoundCloud track, and for local files and Spotify tracks the radio of the same song found on YouTube Music. Songs
+  heard in the last three days go to the end, and the same artist comes again only after three others. Near the
+  end of the queue the radio of the track playing is added, so it doesn't run out (`Radio`, context `radio:<id>`).
+- **When the queue ends** (*Keep playing* in Settings), a radio of the last track plays instead of the library. It
+  is prepared while that track plays; offline it falls back to the next playlist or the library as before.
+- **Recommended for you:** eight YouTube Music radios per refresh — five from the artists that say the most about
+  the taste (what is listened to, liked, saved) and three from anywhere else in it, so the picks don't only follow
+  the favourites. Everything already in the library or heard is left out. A pick offered two days ago and still
+  not played makes room for others (it may come back after a month). The picks are made again every 4 hours and
+  after 12 tracks listened to.
+- **Home page:** *Radios for you* (a radio of a track for each artist listened to most lately, drawn anew with
+  each refresh), *Recommended for you* (picks by artists you know) and *New artists for you* (picks by artists
+  with nothing in the library or history). `--tour <dir> --tour-discover "<query>;<soundcloud query>"` tries the
+  radios, autoplay and the home page.
+- **The browser version** has *Start radio* in the track menu too (YouTube Music tracks); its queue already goes on
+  with radios.
+
 ## Mixing tracks — how it works
 
 - **Where:** the **Mix** button on a playlist, album or artist page (like in Spotify) — settings are separate for
@@ -601,4 +622,4 @@ of every word (the word-by-word highlight):
 1. Radio and URL streams (Qt Multimedia supports HTTP/Icecast).
 2. Custom playlists, a track context menu, drag and drop in the queue.
 3. Watching folders (QFileSystemWatcher) instead of scanning at startup.
-4. YouTube Music: home page with mixes, track radio ("similar"), adding to playlists.
+4. YouTube Music: home page with YouTube Music's own mixes and shelves.

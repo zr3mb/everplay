@@ -6,6 +6,7 @@
 #include "AppPaths.h"
 #include "Language.h"
 #include "Library.h"
+#include "Radio.h"
 #include "ListeningHistory.h"
 #include "Recommendations.h"
 #include "TrackModel.h"
@@ -551,6 +552,11 @@ void PlayerController::load(const QString &id, bool autoplay, bool flushAudio)
 
     emitTrackChanged();
     emit bufferingChanged();
+
+    if (m_context.startsWith(QLatin1String("radio:")))
+        extendRadio();
+    else
+        prepareAutoRadio();
 }
 
 void PlayerController::emitTrackChanged()
@@ -1075,11 +1081,25 @@ bool PlayerController::continueAfterQueue()
     if (!m_autoplay)
         return false;
 
+    // 2. A radio of the track that has just ended — something new rather than the same library again.
+    if (const Track *t = current(); t && t->id == m_autoRadioSeed) {
+        QStringList ids;
+        for (const QString &id : std::as_const(m_autoRadio))
+            if (m_tracks->rowOf(id) >= 0)
+                ids << id;
+        if (!ids.isEmpty()) {
+            emit notice(tr("Up next: a radio of %1").arg(t->title), QStringLiteral("radio"));
+            startQueue(ids, 0, QStringLiteral("radio:") + t->id);
+            return true;
+        }
+    }
+
+    // Without one (no network, nothing like it found):
     auto startAt = [this](const QStringList &ids) {
         return m_shuffle ? int(QRandomGenerator::global()->bounded(int(ids.size()))) : 0;
     };
 
-    // 2. The next non-empty playlist (in sidebar order) after the one that has just ended.
+    // 3. The next non-empty playlist (in sidebar order) after the one that has just ended.
     const int current = lib->playlistIndex(m_context);
     if (current >= 0) {
         for (int step = 1; step < lib->playlistCount(); ++step) {
@@ -1094,7 +1114,7 @@ bool PlayerController::continueAfterQueue()
         }
     }
 
-    // 3. Otherwise (album, artist, search results…) — the whole library from a random track.
+    // 4. Otherwise (album, artist, search results…) — the whole library from a random track.
     QStringList ids = queueIds(lib->libraryRows());
     ids.removeAll(m_currentId);
     if (ids.isEmpty())
@@ -1102,6 +1122,100 @@ bool PlayerController::continueAfterQueue()
     emit notice(tr("Up next: your library"), QStringLiteral("mix"));
     startQueue(ids, int(QRandomGenerator::global()->bounded(int(ids.size()))), QStringLiteral("library"));
     return true;
+}
+
+void PlayerController::startRadio(int row)
+{
+    if (!m_tracks->isValidRow(row))
+        return;
+    const Track seed = m_tracks->at(row);
+    if (seed.demo || seed.source == QLatin1String("radio")) {
+        emit notice(tr("A radio can't start from this track"), QStringLiteral("radio"));
+        return;
+    }
+    if (inRoom()) {
+        emit notice(tr("A radio can't start in a listening room"), QStringLiteral("group"));
+        return;
+    }
+    const QString context = QStringLiteral("radio:") + seed.id;
+    if (seed.id == m_currentId) {
+        // What plays goes on; only what comes after it changes.
+        m_queue = { seed.id };
+        m_queuePos = 0;
+        if (m_context != context) {
+            m_context = context;
+            emit mixChanged();
+        }
+        if (!m_engine.inTransition())
+            cancelPreload();
+        if (!playing())
+            player().play();
+        emit queueChanged();
+    } else {
+        if (!canPlay(row, true))
+            return;
+        m_pendingSeek = -1;
+        startQueue({ seed.id }, 0, context);
+    }
+    emit notice(tr("Radio: %1").arg(seed.title), QStringLiteral("radio"));
+    m_radioExtending = true;
+    Radio::instance()->tracksFor(seed, m_history.mid(std::max<qsizetype>(0, m_history.size() - 50)),
+                                 [this, context, title = seed.title](const QStringList &ids, const QString &error) {
+        m_radioExtending = false;
+        if (m_context != context)
+            return;   // something else plays by now
+        if (ids.isEmpty()) {
+            emit notice(tr("Couldn't start a radio of %1: %2").arg(title, error), QStringLiteral("close"));
+            return;
+        }
+        for (const QString &id : ids)
+            if (!m_queue.contains(id))
+                m_queue << id;
+        emit queueChanged();
+    });
+}
+
+void PlayerController::extendRadio()
+{
+    if (m_radioExtending || inRoom() || m_queuePos < m_queue.size() - 3)
+        return;
+    const Track *t = current();
+    if (!t)
+        return;
+    m_radioExtending = true;
+    QStringList avoid = m_queue;
+    avoid << m_history.mid(std::max<qsizetype>(0, m_history.size() - 100));
+    Radio::instance()->tracksFor(*t, avoid, [this, context = m_context](const QStringList &ids, const QString &) {
+        m_radioExtending = false;
+        if (m_context != context)
+            return;
+        int added = 0;
+        for (const QString &id : ids) {
+            if (m_queue.contains(id) || m_history.contains(id))
+                continue;
+            m_queue << id;
+            if (++added >= 25)
+                break;
+        }
+        if (added > 0)
+            emit queueChanged();
+    });
+}
+
+void PlayerController::prepareAutoRadio()
+{
+    const Track *t = current();
+    if (!m_autoplay || inRoom() || m_repeat != 0 || !t || t->demo || t->source == QLatin1String("radio")
+        || m_queuePos != m_queue.size() - 1 || t->id == m_autoRadioSeed)
+        return;
+    m_autoRadioSeed = t->id;
+    m_autoRadio.clear();
+    QStringList avoid = m_queue;
+    avoid << m_history.mid(std::max<qsizetype>(0, m_history.size() - 100));
+    Radio::instance()->tracksFor(*t, avoid, [this, seed = t->id](const QStringList &ids, const QString &) {
+        if (m_autoRadioSeed == seed)
+            m_autoRadio = ids;
+    });
 }
 
 void PlayerController::skipAfterError(const QString &message)
