@@ -92,22 +92,56 @@ ApplicationWindow {
                 leftMargin: Theme.gap; rightMargin: Theme.gap; bottomMargin: Theme.gap
             }
 
-            StackView {
-                id: stack
+            // Motion blur: while a page slides in or its content scrolls, the pages are drawn through MotionBlur,
+            // smeared along the way they moved during the frame (a 360° shutter). Only while something moves —
+            // the layer stays a moment after, so a burst of wheel notches doesn't rebuild it each time.
+            Item {
+                id: stackHost
                 anchors.fill: parent
-                initialItem: homePage
+                property point motion: Qt.point(0, 0)
+                property var lastItem: null
+                property real lastX: 0
+                readonly property bool usable: Theme.motionBlur && blurCheck.status !== ShaderEffect.Error
+                layer.enabled: usable && blurHold.running
+                layer.smooth: true
+                layer.effect: MotionBlur { motion: stackHost.motion }
 
-                replaceEnter: Transition {
-                    ParallelAnimation {
-                        NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Theme.ms(480); easing.type: Easing.OutCubic }
-                        NumberAnimation { property: "x"; from: 70; to: 0; duration: Theme.ms(760); easing.type: Easing.OutQuint }
-                        NumberAnimation { property: "scale"; from: 0.97; to: 1; duration: Theme.ms(760); easing.type: Easing.OutQuint }
+                MotionBlur { id: blurCheck; visible: false; width: 1; height: 1 }   // the shader loads here (or not)
+                Timer { id: blurHold; interval: 260 }
+                FrameAnimation {
+                    running: stackHost.usable && (stack.busy || blurHold.running || Nav.motionY !== 0)
+                    onTriggered: {
+                        const item = stack.currentItem
+                        const x = item ? item.x : 0
+                        const dx = item === stackHost.lastItem && stack.busy ? x - stackHost.lastX : 0
+                        stackHost.lastItem = item
+                        stackHost.lastX = x
+                        const dy = -Nav.takeMotion()
+                        const shutter = 1.25, limit = 56
+                        const clamp = v => Math.max(-limit, Math.min(limit, v * shutter))
+                        stackHost.motion = Qt.point(clamp(dx), clamp(dy))
+                        if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5 || stack.busy)
+                            blurHold.restart()
                     }
                 }
-                replaceExit: Transition {
-                    ParallelAnimation {
-                        NumberAnimation { property: "opacity"; from: 1; to: 0; duration: Theme.ms(240); easing.type: Easing.InCubic }
-                        NumberAnimation { property: "x"; from: 0; to: -50; duration: Theme.ms(300); easing.type: Easing.InCubic }
+
+                StackView {
+                    id: stack
+                    anchors.fill: parent
+                    initialItem: homePage
+
+                    replaceEnter: Transition {
+                        ParallelAnimation {
+                            NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Theme.ms(480); easing.type: Easing.OutCubic }
+                            NumberAnimation { property: "x"; from: 70; to: 0; duration: Theme.ms(760); easing.type: Easing.OutQuint }
+                            NumberAnimation { property: "scale"; from: 0.97; to: 1; duration: Theme.ms(760); easing.type: Easing.OutQuint }
+                        }
+                    }
+                    replaceExit: Transition {
+                        ParallelAnimation {
+                            NumberAnimation { property: "opacity"; from: 1; to: 0; duration: Theme.ms(240); easing.type: Easing.InCubic }
+                            NumberAnimation { property: "x"; from: 0; to: -50; duration: Theme.ms(300); easing.type: Easing.InCubic }
+                        }
                     }
                 }
             }

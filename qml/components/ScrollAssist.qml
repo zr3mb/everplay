@@ -13,6 +13,7 @@ Item {
     property real step: 160                 // pixels per wheel notch
 
     property int ownSerial: -1               // the history entry this view belongs to
+    property real lastY: 0
     property real restoreTo: -1
 
     function maxY() {
@@ -68,10 +69,15 @@ Item {
         function onContentHeightChanged() { root.tryRestore() }
         function onMovementStarted() { root.restoreTo = -1; settle.stop(); wheelAnim.stop() }
         function onContentYChanged() {
-            if (root.restoreTo >= 0)
+            const dy = root.view.contentY - root.lastY
+            root.lastY = root.view.contentY
+            if (root.restoreTo >= 0) {
                 root.tryRestore()
-            else if (root.remember && root.ownSerial === Nav.pageSerial)
+            } else if (root.remember && root.ownSerial === Nav.pageSerial) {
                 Nav.scrollY = root.view.contentY
+                if (Theme.motionBlur && Math.abs(dy) < 400)   // not a jump (a restored position)
+                    Nav.addMotion(dy)
+            }
         }
     }
 

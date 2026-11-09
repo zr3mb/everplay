@@ -1244,5 +1244,7 @@
   "Couldn't load the album from Spotify: %1": "Nie udało się wczytać albumu ze Spotify: %1",
   "Sign in to Spotify (Sources) to see artist pages": "Zaloguj się do Spotify (Źródła), żeby widzieć strony wykonawców",
   "Singles and EPs": "Single i EP",
-  "Nothing found": "Nic nie znaleziono"
+  "Nothing found": "Nic nie znaleziono",
+  "Motion blur": "Rozmycie ruchu",
+  "Pages that slide in and lists that scroll blur along the motion, like a camera shutter — smoother at high frame rates.": "Wsuwane strony i przewijane listy rozmywają się w kierunku ruchu, jak migawka aparatu — płynniej przy wysokim odświeżaniu."
 }
