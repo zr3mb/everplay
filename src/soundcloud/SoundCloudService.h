@@ -107,6 +107,8 @@ public:
     // The track's description on SoundCloud ("" when there is none or it can't be fetched): artists often
     // put the lyrics there.
     void fetchDescription(const QString &trackId, std::function<void(const QString &description)> done);
+    // Tracks like this one ("sc:<id>"), SoundCloud's own station of it; kept playable (Radio).
+    void fetchRelated(const QString &trackId, std::function<void(const QStringList &ids, const QString &error)> done);
 
 signals:
     void accountChanged();

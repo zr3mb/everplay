@@ -279,6 +279,14 @@ Item {
                     onClicked: Nav.navigate("room")
                 }
                 IconButton {
+                    // A radio of what plays: tracks like it follow, on and on.
+                    icon: "radio"
+                    iconSize: 18
+                    enabled: Player.hasTrack && !Player.inRoom
+                    active: Player.queueContext.startsWith("radio:")
+                    onClicked: Player.startRadio(Player.currentIndex)
+                }
+                IconButton {
                     icon: "share"
                     iconSize: 17
                     enabled: Player.hasTrack

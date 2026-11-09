@@ -30,9 +30,18 @@ Item {
         // The picks are appended to the model, not rebuilt into it. (Never true: the reads make the binding re-run.)
         if (Library.tracks.revision < 0 || YouTube.resultsRevision < 0)
             return []
-        return Library.recommendedRows()
+        // The new artists have their own section below.
+        const fresh = new Set(Library.newArtistRows())
+        return Library.recommendedRows().filter(r => !fresh.has(r))
     }
     property bool allRecommended: false
+    // The picks by artists new to the user, also mixed into "Recommended for you".
+    readonly property var newArtists: {
+        if (Library.tracks.revision < 0 || YouTube.resultsRevision < 0)
+            return []
+        return Library.newArtistRows()
+    }
+    readonly property var radioSeeds: Library.tracks.revision >= 0 ? Recommendations.radioSeeds : []
 
     // Phone: YouTube Music's home shelves through the server, as in the browser version (it answers in English).
     Component.onCompleted: if (Nav.mobile && Online.musicShelves.length === 0) Online.loadMusicShelves()
@@ -249,6 +258,10 @@ Item {
         id: shelfShadow
         size: 140
     }
+    CardShadow {
+        id: radioShadow
+        size: radioGrid.cellW
+    }
 
     PageFlick {
         anchors.fill: parent
@@ -440,47 +453,46 @@ Item {
             }
         }
 
+        // Radios of what the user listens to most lately: one click and similar songs play on and on.
         Reveal {
-            delay: 140
-            visible: !Nav.mobile || Library.localCount > 0   // the phone has no sample albums
+            objectName: "homeRadios"
+            delay: 130
+            visible: page.radioSeeds.length > 0
             ColumnLayout {
                 width: parent.width
                 spacing: 18
                 SectionHeader {
                     Layout.fillWidth: true
-                    title: qsTr("Your albums")
-                    action: qsTr("Show all")
-                    onActionClicked: Nav.navigate("library", { tab: 1 })
+                    title: qsTr("Radios for you")
+                    subtitle: qsTr("Similar songs without end, the ones you haven't heard first")
                 }
                 Grid {
-                    id: albumGrid
+                    id: radioGrid
                     Layout.fillWidth: true
                     Layout.preferredWidth: 100
-                    columns: Math.max(3, Math.floor((width + columnSpacing) / 200))
-                    columnSpacing: 22
+                    columns: Nav.mobile ? 2 : Math.max(3, Math.floor((width + columnSpacing) / 180))
+                    columnSpacing: Nav.mobile ? 14 : 22
+                    rowSpacing: 22
                     readonly property real cellW: (width - columnSpacing * (columns - 1)) / columns
 
                     Repeater {
-                        model: Library.recentAlbums.slice(0, albumGrid.columns)
+                        model: page.radioSeeds.slice(0, Nav.mobile ? 4 : radioGrid.columns)   // phone: two rows
                         AlbumCard {
                             required property var modelData
                             required property int index
-                            width: albumGrid.cellW
-                            shadow: albumShadow
-                            title: modelData.title
-                            subtitle: modelData.artist + (modelData.year > 0 ? " · " + modelData.year : "")
+                            readonly property bool here: Player.queueContext === "radio:" + modelData.id
+                            width: radioGrid.cellW
+                            shadow: radioShadow
+                            title: qsTr("%1 radio").arg(modelData.artist)
+                            subtitle: qsTr("From %1").arg(modelData.title)
                             colorA: modelData.colorA
                             colorB: modelData.colorB
                             seed: modelData.seed
                             cover: modelData.cover
-                            playing: Player.playing && Player.albumKey === modelData.key
-                            revealDelay: 320 + index * 60
-                            onClicked: Nav.navigate("playlist", { kind: "album", key: modelData.key })
-                            onPlayClicked: {
-                                if (playing) { Player.toggle(); return }
-                                const rows = Library.tracksOfAlbum(modelData.key)
-                                Player.playFrom(rows, rows[0])
-                            }
+                            playing: Player.playing && here
+                            revealDelay: 200 + index * 50
+                            onClicked: here ? Player.toggle() : Player.startRadio(modelData.row)
+                            onPlayClicked: here ? Player.toggle() : Player.startRadio(modelData.row)
                         }
                     }
                 }
@@ -488,36 +500,7 @@ Item {
         }
 
         Reveal {
-            delay: 210
-            visible: recentRepeater.count > 0
-            ColumnLayout {
-                width: parent.width
-                spacing: 6
-                SectionHeader {
-                    Layout.fillWidth: true
-                    Layout.bottomMargin: 10
-                    title: qsTr("Recently added")
-                    action: qsTr("Library")
-                    onActionClicked: Nav.navigate("library")
-                }
-                Repeater {
-                    id: recentRepeater
-                    model: Library.tracks.revision >= 0 ? Library.recentlyAdded(5) : []
-                    TrackRow {
-                        required property var modelData
-                        required property int index
-                        Layout.fillWidth: true
-                        trackIndex: modelData
-                        queue: Library.recentlyAdded(50)
-                        number: index + 1
-                        revealDelay: 400 + index * 50
-                    }
-                }
-            }
-        }
-
-        Reveal {
-            delay: 280
+            delay: 150
             visible: page.recommended.length > 0 || Recommendations.loading
             ColumnLayout {
                 width: parent.width
@@ -604,6 +587,133 @@ Item {
                     text: page.allRecommended ? qsTr("Show less") : qsTr("Show more (%1)").arg(page.recommended.length)
                     fontSize: 13
                     onClicked: page.allRecommended = !page.allRecommended
+                }
+            }
+        }
+
+        // Picks by artists the user hasn't heard or saved yet (Recommendations).
+        Reveal {
+            delay: 170
+            visible: page.newArtists.length > 0
+            ColumnLayout {
+                width: parent.width
+                spacing: 14
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 10
+                    SectionHeader {
+                        Layout.fillWidth: true
+                        title: qsTr("New artists for you")
+                        subtitle: qsTr("Nothing by them in your library or history yet")
+                    }
+                    PillButton {
+                        visible: !Nav.mobile   // the phone has no room beside the title; a track plays them all
+                        kind: "ghost"
+                        icon: "play"
+                        text: qsTr("Play")
+                        fontSize: 13
+                        implicitHeight: 38
+                        onClicked: Player.playFrom(page.newArtists, page.newArtists[0], "recs:new")
+                    }
+                }
+                Grid {
+                    id: freshGrid
+                    Layout.fillWidth: true
+                    Layout.preferredWidth: 100
+                    columns: width > 1100 ? 3 : width > 620 ? 2 : 1
+                    columnSpacing: 10
+                    readonly property real cellW: (width - columnSpacing * (columns - 1)) / columns
+
+                    Repeater {
+                        model: page.newArtists.slice(0, freshGrid.columns * 3)
+                        TrackRow {
+                            required property var modelData
+                            required property int index
+                            width: freshGrid.cellW
+                            compact: true
+                            trackIndex: modelData
+                            number: index + 1
+                            queue: page.newArtists
+                            context: "recs:new"
+                            revealDelay: 240 + Math.min(index, 12) * 35
+                        }
+                    }
+                }
+            }
+        }
+
+        Reveal {
+            delay: 140
+            visible: !Nav.mobile || Library.localCount > 0   // the phone has no sample albums
+            ColumnLayout {
+                width: parent.width
+                spacing: 18
+                SectionHeader {
+                    Layout.fillWidth: true
+                    title: qsTr("Your albums")
+                    action: qsTr("Show all")
+                    onActionClicked: Nav.navigate("library", { tab: 1 })
+                }
+                Grid {
+                    id: albumGrid
+                    Layout.fillWidth: true
+                    Layout.preferredWidth: 100
+                    columns: Math.max(3, Math.floor((width + columnSpacing) / 200))
+                    columnSpacing: 22
+                    readonly property real cellW: (width - columnSpacing * (columns - 1)) / columns
+
+                    Repeater {
+                        model: Library.recentAlbums.slice(0, albumGrid.columns)
+                        AlbumCard {
+                            required property var modelData
+                            required property int index
+                            width: albumGrid.cellW
+                            shadow: albumShadow
+                            title: modelData.title
+                            subtitle: modelData.artist + (modelData.year > 0 ? " · " + modelData.year : "")
+                            colorA: modelData.colorA
+                            colorB: modelData.colorB
+                            seed: modelData.seed
+                            cover: modelData.cover
+                            playing: Player.playing && Player.albumKey === modelData.key
+                            revealDelay: 320 + index * 60
+                            onClicked: Nav.navigate("playlist", { kind: "album", key: modelData.key })
+                            onPlayClicked: {
+                                if (playing) { Player.toggle(); return }
+                                const rows = Library.tracksOfAlbum(modelData.key)
+                                Player.playFrom(rows, rows[0])
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Reveal {
+            delay: 210
+            visible: recentRepeater.count > 0
+            ColumnLayout {
+                width: parent.width
+                spacing: 6
+                SectionHeader {
+                    Layout.fillWidth: true
+                    Layout.bottomMargin: 10
+                    title: qsTr("Recently added")
+                    action: qsTr("Library")
+                    onActionClicked: Nav.navigate("library")
+                }
+                Repeater {
+                    id: recentRepeater
+                    model: Library.tracks.revision >= 0 ? Library.recentlyAdded(5) : []
+                    TrackRow {
+                        required property var modelData
+                        required property int index
+                        Layout.fillWidth: true
+                        trackIndex: modelData
+                        queue: Library.recentlyAdded(50)
+                        number: index + 1
+                        revealDelay: 400 + index * 50
+                    }
                 }
             }
         }

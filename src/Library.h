@@ -112,6 +112,8 @@ public:
     Q_INVOKABLE QVariantList onlineResults() const;         // latest YouTube Music search results
     Q_INVOKABLE QVariantList soundCloudResults() const;     // latest SoundCloud search results
     Q_INVOKABLE QVariantList recommendedRows() const;       // "Recommended for you" (Recommendations)
+    Q_INVOKABLE QVariantList newArtistRows() const;         // the picks by artists new to the user
+    Q_INVOKABLE QVariantList radioRows(const QString &seedId) const;   // a track's radio (Radio)
     // Genres from the tags, most tracks first: [{ key, name, count, colorA, colorB, seed, cover, mosaic }].
     Q_INVOKABLE QVariantList genres() const;
     Q_INVOKABLE QVariantList tracksOfGenre(const QString &genre) const;

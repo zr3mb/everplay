@@ -1244,5 +1244,20 @@
   "PROFILE · SOUNDCLOUD · VERIFIED": "PROFIL · SOUNDCLOUD · ZWERYFIKOWANY",
   "Couldn't load the profile from SoundCloud: %1": "Nie udało się wczytać profilu z SoundCloud: %1",
   "No tracks on this profile.": "Ten profil nie ma utworów.",
-  "Newest first": "Od najnowszych"
+  "Newest first": "Od najnowszych",
+  "Start radio": "Uruchom radio",
+  "Radios for you": "Radia dla Ciebie",
+  "Similar songs without end, the ones you haven't heard first": "Podobne utwory bez końca — najpierw te, których jeszcze nie znasz",
+  "%1 radio": "Radio: %1",
+  "From %1": "Na podstawie: %1",
+  "New artists for you": "Nowi wykonawcy dla Ciebie",
+  "Nothing by them in your library or history yet": "Nie ma ich jeszcze w Twojej bibliotece ani historii",
+  "Up next: a radio of %1": "Dalej: radio utworu %1",
+  "A radio can't start from this track": "Z tego utworu nie da się uruchomić radia",
+  "A radio can't start in a listening room": "W pokoju słuchania nie da się uruchomić radia",
+  "Radio: %1": "Radio: %1",
+  "Couldn't start a radio of %1: %2": "Nie udało się uruchomić radia utworu %1: %2",
+  "this track wasn't found on YouTube Music": "nie znaleziono tego utworu w YouTube Music",
+  "YouTube Music has no radio for it": "YouTube Music nie ma dla niego radia",
+  "When the queue ends, a radio of the last track plays: similar songs, the ones you haven't heard lately first. Offline — the next playlist or your library.": "Gdy kolejka się skończy, gra radio ostatniego utworu: podobne piosenki, najpierw te, których ostatnio nie było. Bez internetu — następna playlista albo Twoja biblioteka."
 }

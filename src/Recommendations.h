@@ -6,6 +6,8 @@
 #include <QElapsedTimer>
 #include <QHash>
 #include <QObject>
+#include <QSet>
+#include <QVariantList>
 #include <QStringList>
 #include <QTimer>
 #include <QtQml/qqmlregistration.h>
@@ -24,6 +26,8 @@ class Recommendations : public QObject
     QML_SINGLETON
     Q_PROPERTY(bool loading READ loading NOTIFY changed)
     Q_PROPERTY(QStringList basedOn READ basedOn NOTIFY changed)   // the artists the picks started from
+    // Tracks to start a radio from on the home page: [{ row, title, artist, cover }] (rows in Library.tracks).
+    Q_PROPERTY(QVariantList radioSeeds READ radioSeeds NOTIFY changed)
 
 public:
     static Recommendations *instance();
@@ -31,6 +35,12 @@ public:
 
     bool loading() const { return m_pending > 0; }
     QStringList basedOn() const { return m_basedOn; }
+
+    QVariantList radioSeeds() const;
+    // A pick by an artist the user hasn't heard or saved yet ("New artists for you").
+    Q_INVOKABLE bool isNewArtist(const QString &trackId) const { return m_fresh.contains(trackId); }
+    // Ids and song keys ("artist|title", looseKey) of what was listened to after `sinceMs`.
+    QSet<QString> heardSince(qint64 sinceMs) const;
 
     Q_INVOKABLE void refresh();
     // The track has played long enough to count as listened to (PlayerController).
@@ -48,6 +58,7 @@ private:
     struct Seed { QString artist, title, videoId; int duration = 0; };
 
     QList<Seed> pickSeeds() const;
+    void pickRadioSeeds();
     void startSeed(const Seed &seed, int slot, quint64 serial);
     void finishSeed(int slot, const QList<Track> &radio, quint64 serial);
     void publish();
@@ -60,6 +71,10 @@ private:
     QStringList m_seedArtists;
     QList<Track> m_picks;
     QStringList m_basedOn;
+    QSet<QString> m_fresh;            // picks by artists new to the user
+    QHash<QString, qint64> m_shown;   // song key -> when it was first offered
+    QStringList m_radioSeeds;         // track ids
+    int m_playsSinceRefresh = 0;
     QDateTime m_generated;
     int m_pending = 0;
     quint64 m_serial = 0;

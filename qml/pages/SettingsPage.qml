@@ -220,7 +220,7 @@ Item {
                 SettingRow {
                     icon: "queue"
                     title: qsTr("Keep playing (autoplay)")
-                    description: qsTr("When a playlist ends, the music continues with the next playlist; after an album or search results — with your library.")
+                    description: qsTr("When the queue ends, a radio of the last track plays: similar songs, the ones you haven't heard lately first. Offline — the next playlist or your library.")
                     Toggle { checked: Player.autoplay; onToggled: c => Player.autoplay = c }
                 }
                 SettingRow {

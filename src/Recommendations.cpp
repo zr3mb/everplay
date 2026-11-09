@@ -22,11 +22,16 @@ namespace {
 
 QString stateFile() { return AppPaths::dataDir() + QStringLiteral("/recommendations.json"); }
 
-constexpr int kSeeds = 5;                            // radios per refresh
-constexpr int kPicks = 40;                           // tracks kept
+constexpr int kSeeds = 8;                            // radios per refresh
+constexpr int kFavouriteSeeds = 5;                   // of them from the artists that say the most; the rest explore
+constexpr int kPicks = 60;                           // tracks kept
 constexpr int kPerArtist = 2;                        // the same artist at most this many times
 constexpr int kMaxPlays = 3000;                      // remembered tracks
-constexpr qint64 kStaleMs = 12 * 3600 * 1000LL;      // older picks are made again
+constexpr qint64 kStaleMs = 4 * 3600 * 1000LL;       // older picks are made again
+constexpr int kRefreshPlays = 12;                    // ...and after this many tracks listened to
+constexpr qint64 kShownMs = 2 * 86'400'000LL;        // a pick offered this long ago and not played makes room
+constexpr qint64 kForgetShownMs = 30 * 86'400'000LL; // after this it may be offered again
+constexpr int kRadioSeeds = 8;
 constexpr qint64 kRetryMs = 5 * 60 * 1000LL;         // a refresh that failed (no network) waits this long
 
 // A play from a month ago counts half as much as one from today.
@@ -94,6 +99,8 @@ Recommendations::Recommendations(QObject *parent)
     QTimer::singleShot(0, this, [this] {
         if (!m_picks.isEmpty())
             YouTubeService::instance()->setRecommended(m_picks);
+        if (m_radioSeeds.isEmpty())
+            pickRadioSeeds();
         m_retryTimer.start();
     });
     // A scan or a sync can bring the taste an earlier refresh didn't have.
@@ -126,6 +133,8 @@ void Recommendations::notePlayed(const Track &t)
     p.duration = t.duration;
     ++p.count;
     p.last = QDateTime::currentMSecsSinceEpoch();
+    if (++m_playsSinceRefresh >= kRefreshPlays)
+        m_retryTimer.start();
     if (m_plays.size() > kMaxPlays) {
         auto oldest = m_plays.begin();
         for (auto it = m_plays.begin(); it != m_plays.end(); ++it)
@@ -201,12 +210,20 @@ QList<Recommendations::Seed> Recommendations::pickSeeds() const
     QList<int> pool;
     for (int i = 1; i < ranked.size() && i < 16; ++i)
         pool << i;
-    while (chosen.size() < kSeeds && !pool.isEmpty()) {
+    while (chosen.size() < kFavouriteSeeds && !pool.isEmpty()) {
         QList<double> weights;
         for (int i : std::as_const(pool))
             weights << ranked.at(i).score;
         chosen << pool.takeAt(weightedPick(weights));
     }
+    // The rest from anywhere else in the taste, all equally likely: artists heard once or saved long ago
+    // lead somewhere the favourites' radios don't.
+    QList<int> far;
+    for (int i = 1; i < ranked.size(); ++i)
+        if (!chosen.contains(i))
+            far << i;
+    while (chosen.size() < kSeeds && !far.isEmpty())
+        chosen << far.takeAt(int(QRandomGenerator::global()->bounded(int(far.size()))));
 
     QList<Seed> seeds;
     for (int i : std::as_const(chosen)) {
@@ -224,6 +241,74 @@ QList<Recommendations::Seed> Recommendations::pickSeeds() const
     return seeds;
 }
 
+QSet<QString> Recommendations::heardSince(qint64 sinceMs) const
+{
+    QSet<QString> out;
+    for (const Play &p : m_plays)
+        if (p.last >= sinceMs) {
+            out.insert(p.id);
+            out.insert(looseKey(TrackModel::primaryArtist(p.artist)) + QLatin1Char('|') + looseKey(p.title));
+        }
+    return out;
+}
+
+void Recommendations::pickRadioSeeds()
+{
+    // A track for each of the artists listened to most lately (one per artist), drawn so that the home
+    // page offers other radios from time to time.
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    QHash<QString, QPair<double, QString>> best;   // artist -> (score, track id)
+    QHash<QString, double> artistScore;
+    for (const Play &p : m_plays) {
+        if (!usableArtist(p.artist))
+            continue;
+        const QString artist = looseKey(TrackModel::primaryArtist(p.artist));
+        const double w = p.count * recency(p.last, now);
+        artistScore[artist] += w;
+        if (w > best.value(artist).first)
+            best.insert(artist, { w, p.id });
+    }
+    for (const Track &t : Library::instance()->tracks()->tracks()) {   // liked tracks when little was played
+        if (!t.liked || t.transient || t.demo || !usableArtist(t.artist))
+            continue;
+        const QString artist = looseKey(TrackModel::primaryArtist(t.artist));
+        if (!best.contains(artist)) {
+            best.insert(artist, { 0.05, t.id });
+            artistScore[artist] += 0.05;
+        }
+    }
+    QStringList artists = best.keys();
+    std::sort(artists.begin(), artists.end(),
+              [&artistScore](const QString &a, const QString &b) { return artistScore.value(a) > artistScore.value(b); });
+    artists = artists.mid(0, 30);
+    QList<double> weights;
+    for (const QString &a : std::as_const(artists))
+        weights << artistScore.value(a) + 0.2;
+    m_radioSeeds.clear();
+    while (m_radioSeeds.size() < kRadioSeeds * 2 && !artists.isEmpty()) {
+        const int i = weightedPick(weights);
+        m_radioSeeds << best.value(artists.takeAt(i)).second;
+        weights.removeAt(i);
+    }
+}
+
+QVariantList Recommendations::radioSeeds() const
+{
+    TrackModel *model = Library::instance()->tracks();
+    QVariantList out;
+    for (const QString &id : m_radioSeeds) {
+        const int row = model->rowOf(id);
+        if (row < 0)
+            continue;
+        const Track &t = model->at(row);
+        out << QVariantMap { { "row", row }, { "id", t.id }, { "title", t.title }, { "artist", t.artist }, { "cover", t.cover },
+                             { "colorA", t.colorA }, { "colorB", t.colorB }, { "seed", t.seed } };
+        if (out.size() >= kRadioSeeds)
+            break;
+    }
+    return out;
+}
+
 void Recommendations::refresh()
 {
     if (loading())
@@ -231,6 +316,8 @@ void Recommendations::refresh()
     const QList<Seed> seeds = pickSeeds();
     if (seeds.isEmpty())
         return;   // nothing to go on yet: an empty library and nothing played
+    m_playsSinceRefresh = 0;
+    pickRadioSeeds();
     m_lastAttempt.start();
     const quint64 serial = ++m_serial;
     m_radios = QList<QList<Track>>(seeds.size());
@@ -247,7 +334,7 @@ void Recommendations::maybeRefresh()
 {
     if (loading())
         return;
-    const bool stale = m_picks.isEmpty() || !m_generated.isValid()
+    const bool stale = m_picks.isEmpty() || !m_generated.isValid() || m_playsSinceRefresh >= kRefreshPlays
                        || m_generated.msecsTo(QDateTime::currentDateTimeUtc()) > kStaleMs;
     if (!stale || (m_lastAttempt.isValid() && m_lastAttempt.elapsed() < kRetryMs))
         return;
@@ -297,45 +384,72 @@ void Recommendations::publish()
     const auto songKey = [](const QString &artist, const QString &title) {
         return looseKey(TrackModel::primaryArtist(artist)) + QLatin1Char('|') + looseKey(title);
     };
+    QSet<QString> knownArtists;
     for (const Track &t : Library::instance()->tracks()->tracks()) {
         if (t.transient || t.demo)
             continue;
         knownIds.insert(t.id);
         known.insert(songKey(t.artist, t.title));
+        knownArtists.insert(looseKey(TrackModel::primaryArtist(t.artist)));
     }
     for (const Play &p : std::as_const(m_plays)) {
         knownIds.insert(p.id);
         known.insert(songKey(p.artist, p.title));
+        knownArtists.insert(looseKey(TrackModel::primaryArtist(p.artist)));
     }
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    for (auto it = m_shown.begin(); it != m_shown.end();)
+        it = now - it.value() > kForgetShownMs ? m_shown.erase(it) : std::next(it);
 
-    // The radios take turns, so every seed shows up near the top.
+    // The radios take turns, so every seed shows up near the top. Picks offered days ago and still not
+    // played make room for others; only when that leaves too few do they come back.
     QList<Track> picks;
     QStringList basedOn;
     QSet<QString> taken;
     QHash<QString, int> perArtist;
-    QList<int> cursor(m_radios.size(), 0);
-    for (bool progress = true; progress && picks.size() < kPicks;) {
-        progress = false;
-        for (int s = 0; s < m_radios.size() && picks.size() < kPicks; ++s) {
-            const QList<Track> &radio = m_radios.at(s);
-            while (cursor[s] < radio.size()) {
-                const Track &t = radio.at(cursor[s]++);
-                const QString artist = looseKey(TrackModel::primaryArtist(t.artist));
-                const QString key = songKey(t.artist, t.title);
-                if (knownIds.contains(t.id) || known.contains(key) || taken.contains(key)
-                    || perArtist.value(artist) >= kPerArtist)
-                    continue;
-                taken.insert(key);
-                ++perArtist[artist];
-                picks << t;
-                if (!basedOn.contains(m_seedArtists.value(s)))
-                    basedOn << m_seedArtists.value(s);
-                progress = true;
-                break;
+    for (const bool rotate : { true, false }) {
+        QList<int> cursor(m_radios.size(), 0);
+        for (bool progress = true; progress && picks.size() < kPicks;) {
+            progress = false;
+            for (int s = 0; s < m_radios.size() && picks.size() < kPicks; ++s) {
+                const QList<Track> &radio = m_radios.at(s);
+                while (cursor[s] < radio.size()) {
+                    const Track &t = radio.at(cursor[s]++);
+                    const QString artist = looseKey(TrackModel::primaryArtist(t.artist));
+                    const QString key = songKey(t.artist, t.title);
+                    const qint64 shown = m_shown.value(key, 0);
+                    if (knownIds.contains(t.id) || known.contains(key) || taken.contains(key)
+                        || perArtist.value(artist) >= kPerArtist || (rotate && shown > 0 && now - shown > kShownMs))
+                        continue;
+                    taken.insert(key);
+                    ++perArtist[artist];
+                    picks << t;
+                    if (!basedOn.contains(m_seedArtists.value(s)))
+                        basedOn << m_seedArtists.value(s);
+                    progress = true;
+                    break;
+                }
             }
         }
+        if (picks.size() >= kPicks / 2)
+            break;
     }
     m_radios.clear();
+
+    // Artists the user doesn't know yet take every other place, from the top.
+    QList<Track> familiar, fresh;
+    for (const Track &t : std::as_const(picks))
+        (knownArtists.contains(looseKey(TrackModel::primaryArtist(t.artist))) ? familiar : fresh) << t;
+    QSet<QString> freshIds;
+    for (const Track &t : std::as_const(fresh))
+        freshIds.insert(t.id);
+    picks.clear();
+    for (int i = 0; i < std::max(familiar.size(), fresh.size()); ++i) {
+        if (i < fresh.size())
+            picks << fresh.at(i);
+        if (i < familiar.size())
+            picks << familiar.at(i);
+    }
 
     if (!picks.isEmpty()) {   // otherwise (no network) the previous picks stay
         // The order of the seeds, not of the first pick from each.
@@ -344,6 +458,12 @@ void Recommendations::publish()
             if (basedOn.contains(a) && !ordered.contains(a))
                 ordered << a;
         m_picks = picks;
+        m_fresh = freshIds;
+        for (const Track &t : std::as_const(picks)) {
+            const QString key = songKey(t.artist, t.title);
+            if (!m_shown.contains(key))
+                m_shown.insert(key, now);
+        }
         m_basedOn = ordered;
         m_generated = QDateTime::currentDateTimeUtc();
         YouTubeService::instance()->setRecommended(m_picks);
@@ -373,6 +493,12 @@ void Recommendations::load()
             m_picks << t;
     }
     m_basedOn = root.value("basedOn").toVariant().toStringList();
+    for (const QJsonValue &v : root.value("fresh").toArray())
+        m_fresh.insert(v.toString());
+    const QJsonObject shown = root.value("shown").toObject();
+    for (auto it = shown.begin(); it != shown.end(); ++it)
+        m_shown.insert(it.key(), qint64(it.value().toDouble()));
+    m_radioSeeds = root.value("radioSeeds").toVariant().toStringList();
     m_generated = QDateTime::fromString(root.value("generated").toString(), Qt::ISODate);
 }
 
@@ -385,10 +511,16 @@ void Recommendations::save() const
     QJsonArray picks;
     for (const Track &t : m_picks)
         picks.append(YouTubeService::trackJson(t));
+    QJsonObject shown;
+    for (auto it = m_shown.cbegin(); it != m_shown.cend(); ++it)
+        shown.insert(it.key(), double(it.value()));
     const QJsonObject root {
         { "plays", plays },
         { "picks", picks },
         { "basedOn", QJsonArray::fromStringList(m_basedOn) },
+        { "fresh", QJsonArray::fromStringList(QStringList(m_fresh.cbegin(), m_fresh.cend())) },
+        { "shown", shown },
+        { "radioSeeds", QJsonArray::fromStringList(m_radioSeeds) },
         { "generated", m_generated.toString(Qt::ISODate) },
     };
     QSaveFile file(stateFile());

@@ -609,6 +609,21 @@ void YouTubeService::setRecommended(const QList<Track> &tracks)
     publishResults(m_recommended);
 }
 
+QStringList YouTubeService::keepRadio(const QString &key, const QList<Track> &tracks)
+{
+    storeTracks(tracks, true);
+    QStringList ids;
+    for (const Track &t : tracks)
+        ids << t.id;
+    m_radioKeys.removeAll(key);
+    m_radioKeys << key;
+    while (m_radioKeys.size() > 12)
+        m_collections.remove(m_radioKeys.takeFirst());
+    m_collections.insert(key, ids);
+    publishResults(ids);
+    return ids;
+}
+
 void YouTubeService::setHistory(const QList<Track> &tracks)
 {
     storeTracks(tracks, true);

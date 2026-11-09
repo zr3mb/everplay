@@ -7,6 +7,8 @@
 #include "Language.h"
 #include "Playlists.h"
 #include "online/OnlineService.h"
+#include "Recommendations.h"
+#include "Radio.h"
 #include "soundcloud/SoundCloudService.h"
 #include "spotify/SpotifyService.h"
 #include "youtube/YouTubeService.h"
@@ -1447,6 +1449,10 @@ QVariantList Library::rowsForContext(const QString &context)
         return tracksOfGenre(context.mid(6));
     if (context == QLatin1String("recs"))
         return recommendedRows();
+    if (context == QLatin1String("recs:new"))
+        return newArtistRows();
+    if (context.startsWith(QLatin1String("radio:")))
+        return radioRows(context.mid(6));
     const int index = playlistIndex(context);
     return index >= 0 ? playlistRows(index) : QVariantList();
 }
@@ -1477,6 +1483,20 @@ QVariantList Library::onlineResults() const
 QVariantList Library::soundCloudResults() const
 {
     return rowsOfIds(SoundCloudService::instance()->searchIds());
+}
+
+QVariantList Library::newArtistRows() const
+{
+    QStringList ids;
+    for (const QString &id : YouTubeService::instance()->recommendedIds())
+        if (Recommendations::instance()->isNewArtist(id))
+            ids << id;
+    return rowsOfIds(ids);
+}
+
+QVariantList Library::radioRows(const QString &seedId) const
+{
+    return rowsOfIds(Radio::instance()->stationIds(seedId));
 }
 
 QVariantList Library::recommendedRows() const
