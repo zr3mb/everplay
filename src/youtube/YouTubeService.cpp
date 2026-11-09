@@ -292,6 +292,8 @@ void YouTubeService::refresh()
         return;
     m_pendingSync = 4;
     m_syncError.clear();
+    if (qEnvironmentVariableIsSet("EVERPLAY_PERF_DEBUG"))
+        qInfo("perf: [%.1f s] YouTube sync starts", QDateTime::currentMSecsSinceEpoch() % 100000 / 1000.0);
     emit syncingChanged();
 
     m_api.fetchAccount([this](const YtMusicApi::Account &account, const QString &error) {
@@ -347,6 +349,8 @@ void YouTubeService::syncStep(const QString &error)
         return;
 
     m_lastSync = QDateTime::currentDateTime();
+    if (qEnvironmentVariableIsSet("EVERPLAY_PERF_DEBUG"))
+        qInfo("perf: [%.1f s] YouTube sync done", QDateTime::currentMSecsSinceEpoch() % 100000 / 1000.0);
     saveCache();
     emit syncingChanged();
     emit dataChanged();

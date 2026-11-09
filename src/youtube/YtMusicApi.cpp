@@ -6,6 +6,8 @@
 
 #include <QCoreApplication>
 #include <QDate>
+#include <QFutureWatcher>
+#include <QtConcurrent/QtConcurrentRun>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QNetworkReply>
@@ -272,21 +274,27 @@ void YtMusicApi::send(const Client &client, const QString &endpoint, QJsonObject
     }
 
     QNetworkReply *reply = m_net.post(request, QJsonDocument(body).toJson(QJsonDocument::Compact));
-    connect(reply, &QNetworkReply::finished, this, [reply, callback] {
+    connect(reply, &QNetworkReply::finished, this, [this, reply, callback] {
         reply->deleteLater();
         const QByteArray data = reply->readAll();
-        const QJsonObject json = QJsonDocument::fromJson(data).object();
-        if (reply->error() != QNetworkReply::NoError) {
-            const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-            QString message = dig(json, "error.message").toString();
-            if (message.isEmpty())
-                message = reply->errorString();
-            callback(json, status == 401 || status == 403
-                               ? tr("Your YouTube session has expired — sign in again")
-                               : message);
-            return;
-        }
-        callback(json, QString());
+        const bool failed = reply->error() != QNetworkReply::NoError;
+        const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        const QString errorString = reply->errorString();
+        // An answer is up to a few MB of JSON (a page of a hundred tracks): parsed on a worker thread, so the
+        // interface keeps animating while a sync brings thousands of tracks.
+        onWorker([data] { return QJsonDocument::fromJson(data).object(); },
+                 [callback, failed, status, errorString](const QJsonObject &json) {
+            if (failed) {
+                QString message = dig(json, "error.message").toString();
+                if (message.isEmpty())
+                    message = errorString;
+                callback(json, status == 401 || status == 403
+                                   ? tr("Your YouTube session has expired — sign in again")
+                                   : message);
+                return;
+            }
+            callback(json, QString());
+        });
     });
 }
 
@@ -357,41 +365,45 @@ void YtMusicApi::browsePage(const QString &browseId, const QString &continuation
             callback(collected, error);
             return;
         }
-        // A playlist's own page also carries YouTube's "Suggestions" for it (a shelf of other songs with
-        // its own continuation): only the playlist shelf counts, and only its continuation is followed.
-        // Continuation pages are asked for that shelf alone. Albums and other lists have no such shelf.
-        QJsonValue scope = json;
-        if (continuation.isEmpty()) {
-            QList<QJsonObject> shelves;
-            collect(json, QStringLiteral("musicPlaylistShelfRenderer"), shelves);
-            if (!shelves.isEmpty())
-                scope = shelves.first();
-        }
-        QSet<QString> seen;
-        for (const Track &t : std::as_const(collected))
-            seen.insert(t.id);
-        for (const Track &t : parseTracks(scope))
-            if (!seen.contains(t.id))
-                collected << t;
-
-        // Next page: the new style (continuationCommand) or the old one (nextContinuationData).
-        QList<QJsonObject> commands;
-        collect(scope, QStringLiteral("continuationCommand"), commands);
-        QList<QJsonObject> legacy;
-        collect(scope, QStringLiteral("nextContinuationData"), legacy);
-        QString next;
-        bool nextCommand = false;
-        if (!commands.isEmpty()) {
-            next = commands.first().value("token").toString();
-            nextCommand = true;
-        } else if (!legacy.isEmpty()) {
-            next = legacy.first().value("continuation").toString();
-        }
-
-        if (next.isEmpty() || pagesLeft <= 1)
-            callback(collected, QString());
-        else
-            browsePage(browseId, next, nextCommand, collected, pagesLeft - 1, callback);
+        struct Page { QList<Track> tracks; QString next; bool nextCommand = false; };
+        // Walking the page for its tracks takes as long as parsing it: on the worker as well.
+        onWorker([json, first = continuation.isEmpty()] {
+            // A playlist's own page also carries YouTube's "Suggestions" for it (a shelf of other songs with
+            // its own continuation): only the playlist shelf counts, and only its continuation is followed.
+            // Continuation pages are asked for that shelf alone. Albums and other lists have no such shelf.
+            QJsonValue scope = json;
+            if (first) {
+                QList<QJsonObject> shelves;
+                collect(json, QStringLiteral("musicPlaylistShelfRenderer"), shelves);
+                if (!shelves.isEmpty())
+                    scope = shelves.first();
+            }
+            Page page;
+            page.tracks = parseTracks(scope);
+            // Next page: the new style (continuationCommand) or the old one (nextContinuationData).
+            QList<QJsonObject> commands;
+            collect(scope, QStringLiteral("continuationCommand"), commands);
+            QList<QJsonObject> legacy;
+            collect(scope, QStringLiteral("nextContinuationData"), legacy);
+            if (!commands.isEmpty()) {
+                page.next = commands.first().value("token").toString();
+                page.nextCommand = true;
+            } else if (!legacy.isEmpty()) {
+                page.next = legacy.first().value("continuation").toString();
+            }
+            return page;
+        }, [=, this](const Page &page) mutable {
+            QSet<QString> seen;
+            for (const Track &t : std::as_const(collected))
+                seen.insert(t.id);
+            for (const Track &t : page.tracks)
+                if (!seen.contains(t.id))
+                    collected << t;
+            if (page.next.isEmpty() || pagesLeft <= 1)
+                callback(collected, QString());
+            else
+                browsePage(browseId, page.next, page.nextCommand, collected, pagesLeft - 1, callback);
+        });
     }, query);
 }
 

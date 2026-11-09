@@ -266,6 +266,11 @@ Appearance and layout settings (`[ui]` in `settings.ini`) are remembered between
 
 - **Frame rate:** Qt Quick draws in step with the screen's refresh, so on a 144/165 Hz monitor animations run at
   that rate (`EVERPLAY_FPS_DEBUG=1` prints the frames drawn each second and the screen's refresh rate).
+- **Syncing doesn't stall the interface:** YouTube Music and SoundCloud answers (up to a few MB of JSON per page
+  of a liked list) are parsed on worker threads, and so is walking a page for its tracks; the GUI thread only
+  stores the results. A sync of a few thousand liked tracks used to take the frame rate down to ~60 fps for most
+  of its ~15 s; now only the library's refresh at its end shows (~0.1 s). `EVERPLAY_PERF_DEBUG=1` logs when the
+  GUI thread was blocked, the model rebuilds and the YouTube sync's start and end.
 - **Motion blur** (*Settings → Appearance*, on by default): while a page slides in or a page's list scrolls, the
   pages are drawn through `MotionBlur` — the picture averaged along the way it moved during the frame (16 samples,
   a 360° shutter, at most 56 px). Only while something moves; a still page stays sharp. The shader is
