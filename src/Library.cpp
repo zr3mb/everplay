@@ -458,7 +458,7 @@ void Library::rebuildModel()
     bool changed = false;
     const auto log = qScopeGuard([&] {
         if (perf)
-            qInfo("perf: Library::rebuildModel %lld ms (%d tracks%s)", clock.elapsed(), m_tracks->count(),
+            qInfo("perf: [%.1f s] Library::rebuildModel %lld ms (%d tracks%s)", QDateTime::currentMSecsSinceEpoch() % 100000 / 1000.0, clock.elapsed(), m_tracks->count(),
                   changed ? "" : ", unchanged");
     });
     YouTubeService *yt = YouTubeService::instance();

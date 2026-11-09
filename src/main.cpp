@@ -1,6 +1,8 @@
+#include <QDateTime>
 #include <QScreen>
 #include <atomic>
 #include <memory>
+#include <utility>
 #include "AppPaths.h"
 #include "Language.h"
 #include "Library.h"
@@ -161,12 +163,14 @@ int main(int argc, char *argv[])
     QTimer stallProbe;
     QElapsedTimer stallClock;
     if (perfDebug && window) {
-        auto *once = new QMetaObject::Connection;
-        *once = QObject::connect(window, &QQuickWindow::frameSwapped, window, [once, startClock] {
+        // frameSwapped comes from the render thread, queued here: two frames can be queued before the first
+        // one runs, so a flag (not the connection) decides — and nothing is freed under the second one.
+        auto reported = std::make_shared<bool>(false);
+        QObject::connect(window, &QQuickWindow::frameSwapped, window, [reported, startClock] {
+            if (std::exchange(*reported, true))
+                return;
             qInfo("perf: first frame on screen %lld ms after start", startClock.elapsed());
-            QObject::disconnect(*once);
-            delete once;
-        });
+        }, Qt::SingleShotConnection);
     }
     // EVERPLAY_FPS_DEBUG=1: frames drawn per second (only seconds with frames: an idle window draws none),
     // next to the refresh rate of the screen the window is on.
@@ -188,7 +192,7 @@ int main(int argc, char *argv[])
         QObject::connect(&stallProbe, &QTimer::timeout, [&stallClock] {
             const qint64 gap = stallClock.restart();
             if (gap > 60)
-                qInfo("perf: GUI thread blocked for %lld ms", gap);
+                qInfo("perf: [%.1f s] GUI thread blocked for %lld ms", QDateTime::currentMSecsSinceEpoch() % 100000 / 1000.0, gap);
         });
         stallClock.start();
         stallProbe.start();

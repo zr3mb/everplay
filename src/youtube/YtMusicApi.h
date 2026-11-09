@@ -1,5 +1,9 @@
 #pragma once
 
+#include <QFutureWatcher>
+#include <QtConcurrent/QtConcurrentRun>
+
+#include <type_traits>
 #include "TrackModel.h"
 #include "YtCookies.h"
 #include "lyrics/Lyrics.h"
@@ -108,6 +112,18 @@ public:
     static Lyrics parsePlainLyrics(const QJsonValue &root);
 
 private:
+    // work() on a worker thread, then done(its result) back on this object's thread (dropped if it's gone).
+    template <typename Work, typename Done>
+    void onWorker(Work work, Done done)
+    {
+        using Result = std::invoke_result_t<Work>;
+        auto *watcher = new QFutureWatcher<Result>(this);
+        connect(watcher, &QFutureWatcherBase::finished, this, [watcher, done]() mutable {
+            done(watcher->result());
+            watcher->deleteLater();
+        });
+        watcher->setFuture(QtConcurrent::run(std::move(work)));
+    }
     void fetchCardsPage(const QString &browseId, const QString &params, const QString &continuation,
                         QVariantList collected, int pagesLeft,
                         std::function<void(const QVariantList &cards, const QString &error)> callback);

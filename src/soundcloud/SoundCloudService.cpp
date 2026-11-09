@@ -1,6 +1,8 @@
 #include "SoundCloudService.h"
 
+#include <QFutureWatcher>
 #include <QThreadPool>
+#include <QtConcurrent/QtConcurrentRun>
 
 #include "AppPaths.h"
 #include "LibraryScanner.h"
@@ -472,8 +474,16 @@ void SoundCloudService::get(const QString &pathOrUrl, const QUrlQuery &query, Js
                     callback({}, status == 404 ? tr("not found") : reply->errorString());
                     return;
                 }
-                const QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
-                callback(doc.isArray() ? QJsonValue(doc.array()) : QJsonValue(doc.object()), {});
+                // Parsed on a worker thread (a page of likes is a few hundred kB), the answer handled back here.
+                auto *watcher = new QFutureWatcher<QJsonValue>(this);
+                connect(watcher, &QFutureWatcherBase::finished, this, [watcher, callback] {
+                    callback(watcher->result(), {});
+                    watcher->deleteLater();
+                });
+                watcher->setFuture(QtConcurrent::run([data = reply->readAll()] {
+                    const QJsonDocument doc = QJsonDocument::fromJson(data);
+                    return doc.isArray() ? QJsonValue(doc.array()) : QJsonValue(doc.object());
+                }));
             });
         });
     });
