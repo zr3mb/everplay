@@ -15,6 +15,7 @@
 #include "online/OnlineService.h"
 #include "platform/DiscordPresence.h"
 #include "soundcloud/SoundCloudService.h"
+#include "openmusic/OpenMusicService.h"
 #include "spotify/SpotifyService.h"
 #include "youtube/StreamFetch.h"
 #include "youtube/YouTubeService.h"
@@ -83,6 +84,7 @@ PlayerController::PlayerController(QObject *parent)
 
     connect(&m_engine, &AudioEngine::transitionFinished, this, [this](int fromDeck) {
         Deck &old = m_decks[fromDeck];
+        releaseReads(old);
         old.player->stop();
         old.player->setSource(QUrl());
         old.trackId.clear();
@@ -129,7 +131,12 @@ PlayerController::PlayerController(QObject *parent)
             return;
         m_decks[m_active].resolving.clear();
         emit bufferingChanged();
-        skipAfterError(videoId.startsWith(QLatin1String("sc:")) ? error : tr("Couldn't play from YouTube: %1").arg(error));
+        if (videoId.startsWith(QLatin1String("sc:")))
+            skipAfterError(error);
+        else if (videoId.startsWith(QLatin1String("ia:")) || videoId.startsWith(QLatin1String("wc:")))
+            skipAfterError(tr("Couldn't play the FLAC file: %1").arg(error));
+        else
+            skipAfterError(tr("Couldn't play from YouTube: %1").arg(error));
     });
     // A Spotify track got a different YouTube Music match (chosen by the user or matched again):
     // the playing track switches to it right away, a prepared next track is dropped.
@@ -189,6 +196,17 @@ PlayerController::PlayerController(QObject *parent)
 PlayerController::~PlayerController()
 {
     saveState();
+    for (Deck &deck : m_decks)
+        releaseReads(deck);
+}
+
+// A deck's stream may still be coming in (StreamFetch): its player's reading thread can be waiting for bytes
+// that only arrive through this (GUI) thread. Stopping the player or giving it another source waits for that
+// thread — so first those reads give up, instead of the interface freezing until they time out.
+void PlayerController::releaseReads(Deck &deck)
+{
+    if (deck.fetch)
+        deck.fetch->abandonReads();
 }
 
 void PlayerController::warmUp()
@@ -477,8 +495,8 @@ bool PlayerController::canPlay(int row, bool explain)
         }
         return false;
     }
-    if (t.source == QLatin1String("soundcloud"))
-        return true;   // SoundCloud's own streams — no yt-dlp needed
+    if (t.source == QLatin1String("soundcloud") || OpenMusicService::isOpenSource(t.source))
+        return true;   // SoundCloud's own streams, FLAC files from the open sources — no yt-dlp needed
     if (t.source == QLatin1String("youtube") || t.source == QLatin1String("spotify")) {
         if (!YouTubeService::instance()->engineReady()) {
             if (explain)
@@ -536,10 +554,12 @@ void PlayerController::load(const QString &id, bool autoplay, bool flushAudio)
     m_stall = 0;
 
     Deck &deck = m_decks[m_active];
+    releaseReads(deck);
     deck.trackId = id;
     m_loadClock.start();
     const Track &t = m_tracks->at(row);
-    if (t.source == QLatin1String("youtube") || t.source == QLatin1String("spotify") || t.source == QLatin1String("soundcloud")) {
+    if (t.source == QLatin1String("youtube") || t.source == QLatin1String("spotify") || t.source == QLatin1String("soundcloud")
+        || OpenMusicService::isOpenSource(t.source)) {
         m_autoplayAfterResolve = autoplay;
         Library::instance()->ensurePalette(row);
         startStream(m_active, t);
@@ -616,7 +636,7 @@ void PlayerController::prefetchTrack(int row, bool full)
     const Track &t = m_tracks->at(row);
     if (t.source == QLatin1String("youtube")) {
         want(t.path);
-    } else if (t.source == QLatin1String("soundcloud")) {
+    } else if (t.source == QLatin1String("soundcloud") || OpenMusicService::isOpenSource(t.source)) {
         YouTubeService::instance()->resolver()->prefetch(t.id);
     } else if (t.source == QLatin1String("spotify")) {
         SpotifyService::instance()->match(t.id, want);
@@ -625,7 +645,7 @@ void PlayerController::prefetchTrack(int row, bool full)
 
 void PlayerController::startAhead(const QString &videoId, const QUrl &url, bool full)
 {
-    if (m_cache.has(videoId) || !StreamFetch::suits(url))
+    if (m_cache.has(videoId) || !StreamFetch::suitsAhead(url))
         return;
     for (const Deck &deck : m_decks)
         if (deck.fetch && deck.fetch->url() == url)
@@ -696,8 +716,8 @@ QString PlayerController::streamIdOf(const Track &t) const
 {
     if (t.source == QLatin1String("youtube"))
         return t.path;
-    if (t.source == QLatin1String("soundcloud"))
-        return t.id;   // "sc:<id>" — StreamResolver hands it to SoundCloudService
+    if (t.source == QLatin1String("soundcloud") || OpenMusicService::isOpenSource(t.source))
+        return t.id;   // "sc:<id>", "ia:…", "wc:…" — StreamResolver hands it to their service
     if (t.source == QLatin1String("spotify"))
         return SpotifyService::instance()->matchedVideoId(t.id);
     return {};
@@ -708,6 +728,7 @@ void PlayerController::startStream(int d, const Track &t)
     // A network track: YouTube gets its stream URL from yt-dlp, a Spotify track is first matched to
     // YouTube Music. The deck stays "resolving" until the URL arrives (the resolved / failed signals).
     Deck &deck = m_decks[d];
+    releaseReads(deck);
     deck.player->stop();
     deck.player->setSource(QUrl());
     if (t.source == QLatin1String("spotify") && !SpotifyService::instance()->matchKnown(t.id)) {
@@ -852,6 +873,7 @@ bool PlayerController::retryStream(int d)
     if (m_streamRetried.contains(videoId))
         return false;
     m_streamRetried.insert(videoId);
+    releaseReads(deck);
     deck.player->stop();
     deck.player->setSource(QUrl());
     m_cache.remove(videoId);   // a damaged copy on disk
@@ -1271,7 +1293,10 @@ void PlayerController::checkStall(double dt)
 {
     // A network stream can get stuck (the URL expired, the connection dropped): the player still says
     // "playing", but the position stops moving and EndOfMedia never comes — the music would just stop.
-    if (!playing() || live() || !m_decks[m_active].resolving.isEmpty() || m_engine.inTransition()) {
+    // A file still coming in whole (StreamFetch, Wikimedia) isn't stuck: a seek past what has arrived waits
+    // for the download to get there, and a download that stops ends as an error.
+    if (!playing() || live() || !m_decks[m_active].resolving.isEmpty() || m_engine.inTransition()
+        || (m_decks[m_active].fetch && m_decks[m_active].fetch->whole())) {
         m_lastPosMs = -1;
         m_stall = 0;
         return;
@@ -1419,6 +1444,7 @@ void PlayerController::onModelReset()
     m_index = m_tracks->rowOf(m_currentId);
     if (m_index < 0 && !m_currentId.isEmpty()) {
         stopTransition();
+        releaseReads(m_decks[m_active]);
         player().stop();
         player().setSource(QUrl());
         m_currentId.clear();
@@ -1650,6 +1676,7 @@ void PlayerController::preloadNext()
 
     const int d = standby();
     Deck &deck = m_decks[d];
+    releaseReads(deck);
     deck.player->stop();
     m_engine.dropDeck(d);
     m_engine.resetLevels(d);
@@ -1658,7 +1685,8 @@ void PlayerController::preloadNext()
     m_plannedId = id;
 
     const Track &t = m_tracks->at(row);
-    if (t.source == QLatin1String("youtube") || t.source == QLatin1String("spotify") || t.source == QLatin1String("soundcloud")) {
+    if (t.source == QLatin1String("youtube") || t.source == QLatin1String("spotify") || t.source == QLatin1String("soundcloud")
+        || OpenMusicService::isOpenSource(t.source)) {
         startStream(d, t);
     } else {
         deck.resolving.clear();
@@ -1671,6 +1699,7 @@ void PlayerController::cancelPreload()
     Deck &deck = m_decks[standby()];
     if (deck.trackId.isEmpty() && m_plannedPos < 0)
         return;
+    releaseReads(deck);
     deck.player->stop();
     deck.player->setSource(QUrl());
     deck.resolving.clear();

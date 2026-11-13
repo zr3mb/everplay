@@ -26,6 +26,17 @@ qint64 declaredLength(const QUrl &url)
     return QUrlQuery(url).queryItemValue(QStringLiteral("clen")).toLongLong();   // 0 when missing
 }
 
+// Wikimedia's file servers answer "429 Too Many Requests" to a player that asks for a big file again and
+// again (every seek a new connection, or many parts). Their files (the open FLAC sources) come in one
+// request, as fast as the connection allows; seeking reads what has arrived, waiting for the rest.
+bool isWikimedia(const QUrl &url)
+{
+    return url.host() == QLatin1String("upload.wikimedia.org");
+}
+
+constexpr qint64 kMaxWhole = 320LL * 1024 * 1024;   // a 24-bit / 192 kHz recording is ~6 MB a minute
+constexpr int kWholeReadWaitMs = 60000;             // a seek far ahead waits until the download gets there
+
 void abortAll(QList<QPointer<QNetworkReply>> replies, QObject *receiver)
 {
     for (const QPointer<QNetworkReply> &reply : replies) {
@@ -45,6 +56,10 @@ StreamFetch::StreamFetch(QNetworkAccessManager *net, const QUrl &url, bool headO
     , m_url(url)
     , m_headOnly(headOnly)
 {
+    if (isWikimedia(url)) {
+        fetchWhole();
+        return;
+    }
     if (const qint64 length = declaredLength(url); length > 0) {
         allocate(length);
         plan(0);
@@ -66,6 +81,15 @@ void StreamFetch::continueAll()
     }
 }
 
+void StreamFetch::abandonReads()
+{
+    if (!m_shared)
+        return;
+    QMutexLocker lock(&m_shared->mutex);
+    m_shared->failed = true;
+    m_shared->grown.wakeAll();
+}
+
 StreamFetch::~StreamFetch()
 {
     abortAll(std::exchange(m_replies, {}), this);
@@ -79,7 +103,71 @@ StreamFetch::~StreamFetch()
 
 bool StreamFetch::suits(const QUrl &url)
 {
-    return url.host().endsWith(QLatin1String("googlevideo.com")) && declaredLength(url) <= kMaxSize;
+    return (url.host().endsWith(QLatin1String("googlevideo.com")) && declaredLength(url) <= kMaxSize) || isWikimedia(url);
+}
+
+bool StreamFetch::suitsAhead(const QUrl &url)
+{
+    return suits(url) && !isWikimedia(url);   // one whole download per play, not another one ahead of it
+}
+
+void StreamFetch::fetchWhole()
+{
+    m_wholeFile = true;
+    QNetworkRequest req(m_url);
+    req.setRawHeader("User-Agent", QByteArrayLiteral("Everplay/" EVERPLAY_VERSION " (desktop music player)"));
+    req.setTransferTimeout(30000);
+    QNetworkReply *reply = m_net->get(req);
+    m_replies << reply;
+    // The size from the headers: the bytes then go where the player reads them as they come.
+    connect(reply, &QNetworkReply::metaDataChanged, this, [this, reply] {
+        const qint64 length = reply->header(QNetworkRequest::ContentLengthHeader).toLongLong();
+        if (m_shared || reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() != 200 || length <= 0)
+            return;
+        if (length > kMaxWhole) {
+            fail();   // played from the URL instead
+            return;
+        }
+        allocate(length);
+        m_shared->waitMs = kWholeReadWaitMs;
+    });
+    connect(reply, &QNetworkReply::readyRead, this, [this, reply] {
+        if (!m_shared || m_done)
+            return;   // without a size it's all read at the end
+        const QByteArray chunk = reply->readAll();
+        if (m_received + chunk.size() > m_total) {
+            fail();
+            return;
+        }
+        if (!chunk.isEmpty())
+            store({ m_received, m_received + chunk.size() - 1 }, chunk);
+    });
+    connect(reply, &QNetworkReply::finished, this, [this, reply] {
+        reply->deleteLater();
+        m_replies.removeIf([reply](const QPointer<QNetworkReply> &r) { return r == reply; });
+        if (m_done)
+            return;
+        if (reply->error() != QNetworkReply::NoError
+            || reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() != 200) {
+            fail();
+            return;
+        }
+        const QByteArray rest = reply->readAll();
+        if (!m_shared) {   // no size announced: the whole file at once
+            m_whole = rest;
+            m_done = true;
+            emit finished(!m_whole.isEmpty());
+            return;
+        }
+        if (!rest.isEmpty() && m_received + rest.size() <= m_total)
+            store({ m_received, m_received + rest.size() - 1 }, rest);
+        if (m_received != m_total) {
+            fail();
+            return;
+        }
+        m_done = true;
+        emit finished(true);
+    });
 }
 
 QByteArray StreamFetch::takeData()
@@ -243,7 +331,7 @@ qint64 StreamDevice::readData(char *out, qint64 max)
         --it;
         return at < it.value() ? it.value() - at : 0;
     };
-    const QDeadlineTimer deadline(kReadWaitMs);
+    const QDeadlineTimer deadline(m_data->waitMs > 0 ? m_data->waitMs : kReadWaitMs);
     if (available() <= 0)
         m_data->wanted = at;
     while (available() <= 0 && !m_data->failed) {

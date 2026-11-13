@@ -18,6 +18,7 @@ Item {
         if (Library.tracks.revision < 0 || (a.kind === "ytcollection" && YouTube.resultsRevision < 0)
             || (a.kind === "sccollection" && SoundCloud.resultsRevision < 0)
             || (a.kind === "spcollection" && Spotify.artistsRevision < 0)
+            || (a.kind === "flaccollection" && OpenMusic.resultsRevision < 0)
                 || (a.kind === "genre" && Library.genresRevision < 0))
             return {}
         if (a.kind === "album") {
@@ -48,6 +49,18 @@ Item {
                      colorA: "#d9a27e", colorB: "#5a3a28", seed: 0, cover: a.cover || "", icon: "",
                      round: false, rows: Library.soundCloudCollectionRows(a.playlistId),
                      loading: SoundCloud.collectionLoading(a.playlistId) }
+        }
+        if (a.kind === "flaccollection") {
+            // An album or a concert on the Internet Archive — its FLAC files, loaded from there.
+            const c = OpenMusic.collectionInfo(a.playlistId)
+            const meta = [a.subtitle || c.creator || ""].filter(x => x !== "")
+            if (c.license)
+                meta.push(c.license)
+            return { label: qsTr("FLAC · INTERNET ARCHIVE"), title: a.title || c.title || "", meta: meta,
+                     colorA: "#9cc3c9", colorB: "#2c4a4f", seed: 0, cover: a.cover || "", icon: "",
+                     round: false, rows: Library.openMusicCollectionRows(a.playlistId),
+                     loading: OpenMusic.collectionLoading(a.playlistId),
+                     flacItem: a.playlistId, flacBytes: c.bytes || 0, flacPage: c.page || "" }
         }
         if (a.kind === "spcollection") {
             // An album opened from a Spotify artist — loaded from Spotify, played from YouTube Music.
@@ -97,6 +110,7 @@ Item {
         if (a.kind === "artist") return "artist:" + a.artist
         if (a.kind === "ytcollection") return "ytc:" + a.playlistId
         if (a.kind === "sccollection") return "scc:" + a.playlistId
+        if (a.kind === "flaccollection") return "flacc:" + a.playlistId
         if (a.kind === "spcollection") return "spalbum:" + a.playlistId
         if (a.kind === "genre") return "genre:" + a.key
         const p = Library.playlists[a.index || 0]
@@ -340,6 +354,27 @@ Item {
                             showDot: false
                             onClicked: mixPopup.open()
                         }
+                        // An Internet Archive album / concert: all its files into the library at once.
+                        PillButton {
+                            visible: (page.info.flacItem || "") !== "" && page.info.rows.length > 0
+                            kind: "ghost"
+                            icon: "download"
+                            text: page.info.flacBytes > 0
+                                  ? qsTr("Save FLAC (%1)").arg(page.info.flacBytes >= 1e9 ? (page.info.flacBytes / 1e9).toFixed(1) + " GB"
+                                                                                         : Math.max(1, Math.round(page.info.flacBytes / 1e6)) + " MB")
+                                  : qsTr("Save FLAC")
+                            fontSize: 13
+                            implicitHeight: 40
+                            onClicked: OpenMusic.downloadCollection(page.info.flacItem)
+                        }
+                        IconButton {
+                            visible: (page.info.flacPage || "") !== ""
+                            icon: "link"
+                            iconSize: 22
+                            implicitWidth: 42; implicitHeight: 42
+                            showDot: false
+                            onClicked: Qt.openUrlExternally(page.info.flacPage)
+                        }
                         IconButton {
                             id: moreButton
                             icon: "more"
@@ -390,7 +425,8 @@ Item {
                             Layout.fillWidth: true
                             horizontalAlignment: Text.AlignHCenter
                             wrapMode: Text.WordWrap
-                            text: page.info.loading ? qsTr("Fetching tracks from YouTube Music")
+                            text: page.info.loading ? ((page.info.flacItem || "") !== "" ? qsTr("Fetching the files from the Internet Archive")
+                                                                                     : qsTr("Fetching tracks from YouTube Music"))
                                   : page.info.editable === true ? qsTr("Add tracks with ⋯ → Add to playlist on any track.")
                                   : qsTr("Like a track with the heart and it will show up here.")
                             color: Theme.textDim

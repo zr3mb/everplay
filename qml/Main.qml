@@ -388,6 +388,11 @@ ApplicationWindow {
     }
 
     Connections {
+        target: OpenMusic
+        function onNotice(text, icon) { toast.show(text, icon) }
+    }
+
+    Connections {
         target: Lyrics
         function onNotice(text, icon) { toast.show(text, icon) }
     }

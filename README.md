@@ -262,6 +262,42 @@ Appearance and layout settings (`[ui]` in `settings.ini`) are remembered between
 - **Covers:** Spotify serves playlist covers as WebP — the build needs the Qt image formats plugins
   (MSYS2: `mingw-w64-ucrt-x86_64-qt6-imageformats`; the Linux AppImage gets them from `qtimageformats`).
 
+## FLAC from open sources — how it works
+
+- **Turning it on:** *Sources → Open FLAC sources* (off by default), with a switch for each of the two sources.
+  Search then gets a *FLAC* filter and a *FLAC from open sources* section under *All*: albums and concerts as
+  cards, then single files. Nothing needs an account or a key.
+- **Only music that may be shared:** Everplay doesn't look for "any FLAC on the internet".
+  - **Internet Archive** (`archive.org/advancedsearch.php`, then `archive.org/metadata/<item>` for the files):
+    items with FLAC files from the Live Music Archive (concerts taped with the bands' permission), netlabel
+    releases, and community uploads (`opensource_audio`, `audio_music`) that state a Creative Commons or
+    public-domain licence. Other community uploads are left out — anyone can upload there, licensed or not.
+    The query looks at the items' title, creator and subject, sorted by downloads; when few items match, their
+    descriptions (a concert's setlist) are searched too, so a song can be found by its title. The first five
+    items' files become tracks: all of them when the artist or album matches, otherwise only the files named
+    like the query.
+  - **Wikimedia Commons** (`commons.wikimedia.org/w/api.php`, search with `filemime:audio/x-flac`): freely licensed
+    and public-domain recordings, much of it classical. "Composer - Piece (Performer, year)" names are split into
+    an artist and a title.
+- **Playing:** straight from the file ("ia:<item>/<file>", "wc:<file>" go through `StreamResolver` like
+  SoundCloud's ids). Internet Archive files stream from their URL; Wikimedia's servers answer *429 Too Many
+  Requests* to a player that keeps reconnecting to a big file (every seek), so those files come in one request into
+  memory (`StreamFetch`, up to 320 MB) and play while they arrive — a seek past what has arrived waits for it.
+- **The licence:** each track's ⋯ menu shows it (*Licence: CC BY-NC-SA 3.0*, *Public domain*, *Shared with the
+  band's permission*) and opens the file's page at the source; an album's page shows it under the title.
+- **Saving:** *Save the FLAC file to your library* in the ⋯ menu, or *Save FLAC (1.1 GB)* on an album's page. Files
+  go to `Music/Everplay FLAC/<artist>/<album>/<nn title>.flac` (the folder can be changed on the card in Sources),
+  one at a time; tags the file is missing (Wikimedia files often have none) are written from the source's data,
+  with the licence and the page's address. The folder joins the library's folders and is scanned, so the files
+  turn into local tracks.
+- **Liked** open-source tracks are kept in `open-music.json` and show up in *Liked* and the library; they don't
+  go to the Everplay account (the server shares YouTube Music and SoundCloud tracks only).
+- **The browser version** has the same switch (*More*), searches both sources from the browser and plays the files
+  directly; the ⋯ menu shows the licence, downloads the file and opens its page. Its CSP allows `archive.org`
+  and `commons.wikimedia.org` for that.
+- `--tour <dir> --tour-flac "<query>"` turns it on, searches, plays and seeks, opens the first album and saves its
+  shortest file into the library.
+
 ## Motion and frame rate
 
 - **Frame rate:** Qt Quick draws in step with the screen's refresh, so on a 144/165 Hz monitor animations run at
@@ -280,7 +316,8 @@ Appearance and layout settings (`[ui]` in `settings.ini`) are remembered between
 
 ## Where things come from
 
-Wherever sources mix, a badge says where something is from (YouTube Music, SoundCloud, Spotify, yours): the
+Wherever sources mix, a badge says where something is from (YouTube Music, SoundCloud, Spotify, the Internet
+Archive, Wikimedia Commons, yours): the
 playlists found by search (a pill on each card, and before the second line in the side column), the home page's
 radios and playlists, and an icon after the title in the home page's narrow track grids (the wide lists have a
 source column). Artist pages carry the badge in their header, and albums and playlists opened from them say it
@@ -611,6 +648,7 @@ of every word (the word-by-word highlight):
 | `src/Playlists.*` | `Playlists` singleton: the user's playlists — local (`playlists.json`) or on YouTube Music |
 | `src/spotify/SpotifyService.*` | `Spotify` singleton: sign-in, playlist / liked songs sync, YouTube Music matching |
 | `src/spotify/SpotifyWebLogin.*` | Spotify sign-in window + web player token through the DevTools Protocol |
+| `src/openmusic/OpenMusicService.*` | `OpenMusic` singleton: FLAC from the Internet Archive and Wikimedia Commons — search, albums, playback, saving files into the library |
 | `src/youtube/YouTubeService.*` | `YouTube` singleton for QML: account state, sync, library cache |
 | `src/audio/AudioEngine.*`, `src/audio/Equalizer.*` | Custom output path: deck mixer (transition styles), buffer + `QAudioSink`, 7-band parametric equalizer |
 | `src/lyrics/Lyrics.*` | Lyrics structure, LRC parser, cache (de)serialization |

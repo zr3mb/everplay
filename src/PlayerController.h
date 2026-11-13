@@ -256,6 +256,7 @@ private:
     int nextQueuePos() const;
     void preloadNext();
     void cancelPreload();
+    void releaseReads(Deck &deck);
     bool standbyReady() const;
     void updateMix(double dt);
     void startTransition(AudioEngine::Style style, double seconds, const QString &label);

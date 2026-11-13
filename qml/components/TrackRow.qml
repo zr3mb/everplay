@@ -287,6 +287,7 @@ Item {
             onClosed: destroy()
 
             property bool choosingPlaylist: false
+            readonly property bool openSource: root.t.source === "archive" || root.t.source === "commons"
 
             contentItem: ColumnLayout {
                 spacing: 2
@@ -429,6 +430,47 @@ Item {
                     onTriggered: {
                         menu.close()
                         Spotify.rematch(root.t.id)
+                    }
+                }
+
+                // ---- the open FLAC sources: the file itself and the licence it's shared under ----
+                Rectangle {
+                    visible: menu.openSource
+                    Layout.fillWidth: true
+                    Layout.topMargin: 4
+                    Layout.bottomMargin: 2
+                    height: 1
+                    color: Qt.rgba(1, 1, 1, 0.07)
+                }
+                Text {
+                    visible: menu.openSource && OpenMusic.license(root.t.id) !== ""
+                    Layout.fillWidth: true
+                    Layout.margins: 10
+                    Layout.bottomMargin: 4
+                    text: qsTr("Licence: %1").arg(OpenMusic.license(root.t.id))
+                    color: Theme.textFaint
+                    font.pixelSize: 12
+                    wrapMode: Text.WordWrap
+                }
+                MenuEntry {
+                    visible: menu.openSource
+                    enabled: !OpenMusic.downloading(root.t.id)
+                    Layout.fillWidth: true
+                    icon: "download"
+                    text: OpenMusic.downloading(root.t.id) ? qsTr("Saving to your library…") : qsTr("Save the FLAC file to your library")
+                    onTriggered: {
+                        menu.close()
+                        OpenMusic.download(root.t.id)
+                    }
+                }
+                MenuEntry {
+                    visible: menu.openSource
+                    Layout.fillWidth: true
+                    icon: "link"
+                    text: root.t.source === "archive" ? qsTr("Open on archive.org") : qsTr("Open on Wikimedia Commons")
+                    onTriggered: {
+                        menu.close()
+                        Qt.openUrlExternally(OpenMusic.pageUrl(root.t.id))
                     }
                 }
             }
