@@ -35,8 +35,8 @@ public:
     void detect();
     void download();          // official release from GitHub, verified with SHA-256
     void setCookies(const YtCookies &cookies) { m_cookies = cookies; }
-    // Ids with this prefix are resolved by another service (SoundCloud's own API) instead of yt-dlp;
-    // they share the cache and the resolved / failed signals.
+    // Ids with these prefixes are resolved by another service (SoundCloud's own API, the open FLAC
+    // sources' files) instead of yt-dlp; they share the cache and the resolved / failed signals.
     using Done = std::function<void(const QUrl &url, const QString &error)>;
     using External = std::function<void(const QString &id, Done done)>;
     void setExternal(const QString &prefix, External resolve);
@@ -45,7 +45,7 @@ public:
     // A fresh URL through the account (another YouTube client) — when the anonymous one can't be opened.
     void resolveAgain(const QString &videoId);
     void prefetch(const QString &videoId) { if ((ready() || isExternal(videoId)) && !cachedUrl(videoId).isValid()) resolve(videoId); }
-    bool isExternal(const QString &id) const { return !m_externalPrefix.isEmpty() && id.startsWith(m_externalPrefix); }
+    bool isExternal(const QString &id) const { return externalFor(id) != nullptr; }
     QUrl cachedUrl(const QString &videoId) const;
     void forget(const QString &videoId) { m_cache.remove(videoId); }   // e.g. the URL expired mid-playback
 
@@ -69,6 +69,7 @@ private:
     void fetchVisitor();
     void fallback(const QString &videoId);
     void runExternal(const QString &id);
+    const External *externalFor(const QString &id) const;
     void readVersion();
     void finishDownload(const QByteArray &binary, const QByteArray &sums);
     void report(const QString &text, const QString &icon);
@@ -78,8 +79,7 @@ private:
     YtCookies m_cookies;
     QHash<QString, Entry> m_cache;
     QHash<QString, QProcess *> m_running;
-    QString m_externalPrefix;
-    External m_external;
+    QList<QPair<QString, External>> m_external;   // prefix -> resolver
     QSet<QString> m_externalRunning;
     // Fast path: an anonymous visitor id (YouTube asks bot checks without one), shared by all calls
     QByteArray m_visitor;

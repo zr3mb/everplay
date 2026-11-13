@@ -115,5 +115,17 @@
   "%n followers": [
     "%n follower",
     "%n followers"
+  ],
+  "Saving %n FLAC files to your library…": [
+    "Saving %n FLAC file to your library…",
+    "Saving %n FLAC files to your library…"
+  ],
+  "%n FLAC files saved to your library": [
+    "%n FLAC file saved to your library",
+    "%n FLAC files saved to your library"
+  ],
+  "Saving %n files…": [
+    "Saving %n file…",
+    "Saving %n files…"
   ]
 }

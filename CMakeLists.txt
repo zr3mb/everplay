@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(Everplay VERSION 0.30.1 LANGUAGES CXX)
+project(Everplay VERSION 0.31.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -82,6 +82,7 @@ qt_add_qml_module(Everplay
         src/spotify/SpotifyService.h  src/spotify/SpotifyService.cpp
         src/spotify/SpotifyWebLogin.h src/spotify/SpotifyWebLogin.cpp
         src/soundcloud/SoundCloudService.h src/soundcloud/SoundCloudService.cpp
+        src/openmusic/OpenMusicService.h src/openmusic/OpenMusicService.cpp
         src/online/OnlineService.h    src/online/OnlineService.cpp
     QML_FILES
         qml/Main.qml
@@ -215,7 +216,7 @@ if(UNIX AND NOT APPLE AND NOT ANDROID)
     set_target_properties(Everplay PROPERTIES OUTPUT_NAME everplay)
 endif()
 
-target_include_directories(Everplay PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/src/youtube ${CMAKE_CURRENT_SOURCE_DIR}/src/audio ${CMAKE_CURRENT_SOURCE_DIR}/src/lyrics ${CMAKE_CURRENT_SOURCE_DIR}/src/platform ${CMAKE_CURRENT_SOURCE_DIR}/src/spotify ${CMAKE_CURRENT_SOURCE_DIR}/src/soundcloud ${CMAKE_CURRENT_SOURCE_DIR}/src/online)
+target_include_directories(Everplay PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/src/youtube ${CMAKE_CURRENT_SOURCE_DIR}/src/audio ${CMAKE_CURRENT_SOURCE_DIR}/src/lyrics ${CMAKE_CURRENT_SOURCE_DIR}/src/platform ${CMAKE_CURRENT_SOURCE_DIR}/src/spotify ${CMAKE_CURRENT_SOURCE_DIR}/src/soundcloud ${CMAKE_CURRENT_SOURCE_DIR}/src/openmusic ${CMAKE_CURRENT_SOURCE_DIR}/src/online)
 target_link_libraries(Everplay PRIVATE
     Qt6::Quick Qt6::QuickControls2 Qt6::Multimedia Qt6::Concurrent Qt6::Network Qt6::WebSockets Qt6::CorePrivate
     TagLib::tag

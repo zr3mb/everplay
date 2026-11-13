@@ -354,16 +354,32 @@ void StreamResolver::resolveAgain(const QString &videoId)
 
 void StreamResolver::setExternal(const QString &prefix, External resolve)
 {
-    m_externalPrefix = prefix;
-    m_external = std::move(resolve);
+    for (auto &entry : m_external) {
+        if (entry.first == prefix) {
+            entry.second = std::move(resolve);
+            return;
+        }
+    }
+    m_external.append({ prefix, std::move(resolve) });
+}
+
+const StreamResolver::External *StreamResolver::externalFor(const QString &id) const
+{
+    for (const auto &entry : m_external)
+        if (id.startsWith(entry.first))
+            return &entry.second;
+    return nullptr;
 }
 
 void StreamResolver::runExternal(const QString &id)
 {
     if (m_externalRunning.contains(id))
         return;
+    const External *external = externalFor(id);
+    if (!external)
+        return;
     m_externalRunning.insert(id);
-    m_external(id, [this, id](const QUrl &url, const QString &error) {
+    (*external)(id, [this, id](const QUrl &url, const QString &error) {
         m_externalRunning.remove(id);
         if (!url.isValid()) {
             emit failed(id, error);

@@ -28,6 +28,7 @@ struct StreamData
     QMap<qint64, qint64> arrived;
     qint64 wanted = -1;
     bool failed = false;
+    int waitMs = 0;   // how long a read waits for its bytes (0: the usual)
 };
 
 // Fetches a whole YouTube audio stream into memory with Range requests, several parts at once.
@@ -44,8 +45,11 @@ public:
     StreamFetch(QNetworkAccessManager *net, const QUrl &url, bool headOnly = false, QObject *parent = nullptr);
     ~StreamFetch() override;
 
-    // A googlevideo.com stream that isn't huge (a very long mix keeps streaming from the URL).
+    // A googlevideo.com stream that isn't huge (a very long mix keeps streaming from the URL), or a file on
+    // Wikimedia's servers (fetched whole in one request: they turn away a player that keeps reconnecting).
     static bool suits(const QUrl &url);
+    // Also worth fetching ahead (the next track, one the cursor rests on).
+    static bool suitsAhead(const QUrl &url);
 
     // The stream's bytes, for a StreamDevice (null until the size is known)
     std::shared_ptr<StreamData> data() const { return m_shared; }
@@ -54,6 +58,9 @@ public:
     QUrl url() const { return m_url; }
     bool headIsReady() const { return m_headSent; }
     bool headOnly() const { return m_headOnly; }
+    bool whole() const { return m_wholeFile; }   // one request for all of it (Wikimedia), not parts
+    // The player stops reading this stream: a read waiting for bytes still to come gives up at once.
+    void abandonReads();
     void continueAll();
 
 signals:
@@ -64,6 +71,7 @@ private:
     struct Part { qint64 from; qint64 to; int attempts = 0; };
 
     void request(Part part);
+    void fetchWhole();
     void plan(qint64 from);
     void startMore();
     void fail();
@@ -82,6 +90,7 @@ private:
     bool m_headOnly = false;
     bool m_headSent = false;
     bool m_done = false;
+    bool m_wholeFile = false;
 };
 
 // Plays a stream while it's still coming in: reads wait until the bytes they need have arrived.

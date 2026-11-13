@@ -1233,6 +1233,79 @@ Item {
         } })
         return s
     }
+    // The open FLAC sources (--tour-flac "<query>"): turned on, searched, a track played and seeked, the first
+    // album / concert found opened and played, its shortest file saved to the library, the sources card.
+    readonly property bool withFlac: Qt.application.arguments.indexOf("--tour-flac") >= 0
+    property string flacSaved: ""
+    function flacLine(row) {
+        const t = Library.tracks.get(row)
+        return t.title + " / " + t.artist + " [" + t.source + ", " + t.quality + ", " + t.duration + " s]"
+    }
+    readonly property var flacSteps: {
+        if (!withFlac)
+            return []
+        const query = Qt.application.arguments[Qt.application.arguments.indexOf("--tour-flac") + 1]
+        const waits = n => Array.from({ length: n }, (_, i) => ({ name: "F-wait" + i, run: () => {
+            console.log("tour: downloads", JSON.stringify(OpenMusic.downloads))
+        } }))
+        return [
+            { name: "F1-on", run: () => { Nav.finishOnboarding(); Player.muted = true; OpenMusic.enabled = true
+                                          Nav.navigate("search", { query: query, filter: 5 }) } },
+            { name: "F2-wait", run: () => {} },
+            { name: "F3-wait", run: () => {} },
+            { name: "F4-results", run: () => {
+                const r = Library.openMusicResults()
+                console.log("tour: flac tracks", r.length, "| albums", OpenMusic.albumResults.length, "| searching", OpenMusic.searching)
+                console.log("tour: flac first", r.slice(0, 6).map(x => root.flacLine(x)).join(" | "))
+                console.log("tour: albums", OpenMusic.albumResults.slice(0, 4).map(a => a.title + " (" + a.subtitle + ")").join(" | "))
+                // a Wikimedia Commons file when there's one (Internet Archive files play later, from the album)
+                const first = r.find(x => Library.tracks.get(x).source === "commons") ?? r[0]
+                if (r.length) Player.playFrom(r, first, "search")
+            } },
+            { name: "F5-wait", run: () => {} },
+            { name: "F6-playing", run: () => {
+                console.log("tour: playing", Player.title, "| source", Player.source, "| pos", Player.position.toFixed(1),
+                            "| dur", Player.duration, "| playing", Player.playing)
+                Player.seek(Math.min(90, Player.duration / 2))
+            } },
+            { name: "F7-wait", run: () => console.log("tour: seeking pos", Player.position.toFixed(1), "playing", Player.playing, "buffering", Player.buffering) },
+            { name: "F8-seeked", run: () => {
+                console.log("tour: after seek pos", Player.position.toFixed(1), "playing", Player.playing)
+                const a = OpenMusic.albumResults[0]
+                root.album = a ? { playlistId: a.id } : null
+                if (a) Nav.navigate("playlist", { kind: "flaccollection", playlistId: a.id, title: a.title, subtitle: a.subtitle, cover: a.cover })
+            } },
+            { name: "F9-wait", run: () => {} },
+            { name: "F10-album", run: () => {
+                const id = root.album ? root.album.playlistId : ""
+                const r = id ? Library.openMusicCollectionRows(id) : []
+                const c = OpenMusic.collectionInfo(id)
+                console.log("tour: album rows", r.length, "| licence", c.license, "| bytes", c.bytes, "| first", r.slice(0, 3).map(x => root.flacLine(x)).join(" | "))
+                // the shortest file is saved, so the test stays quick
+                let shortest = -1
+                r.forEach(x => { const d = Library.tracks.get(x).duration; if (d > 0 && (shortest < 0 || d < Library.tracks.get(shortest).duration)) shortest = x })
+                root.flacSaved = shortest >= 0 ? Library.tracks.get(shortest).title : ""
+                if (shortest >= 0) OpenMusic.download(Library.tracks.get(shortest).id)
+                if (r.length > 1) Player.playFrom(r, r[1], "flacc:" + id)
+            } },
+            { name: "F11-wait", run: () => {} },
+            { name: "F12-playing", run: () => {
+                console.log("tour: playing", Player.title, "| quality", Player.quality, "| pos", Player.position.toFixed(1), "| playing", Player.playing)
+                Player.pause()
+                Nav.navigate("sources")
+            } },
+            { name: "F13-sources", run: () => root.scrollPage(1700) },
+        ].concat(waits(8), [
+            { name: "F20-library", run: () => {
+                const hits = Library.search(root.flacSaved, "local")
+                console.log("tour: saved", root.flacSaved, "| in the library", hits.length, "|", hits.length ? Library.tracks.get(hits[0]).path + " / " + root.flacLine(hits[0]) : "",
+                            "| folders", JSON.stringify(Library.folders))
+                Nav.navigate("search", { query: query, filter: 0 })
+            } },
+            { name: "F21-wait", run: () => {} },
+            { name: "F22-all", run: () => root.scrollPage(1200) },
+        ])
+    }
     // A SoundCloud profile (--tour-sc-profile "<query>"): the profiles found, the first one opened, its
     // popular track played, then the profile opened again from the playing track's artist.
     readonly property bool withScProfile: Qt.application.arguments.indexOf("--tour-sc-profile") >= 0
@@ -1505,7 +1578,7 @@ Item {
         { name: "T7-cat-compact", run: () => { Nav.sidebarCompact = true; Nav.queueOpen = false; Nav.navigate("home") } },
         { name: "T8-back", run: () => { Nav.sidebarCompact = false; Nav.queueOpen = true; Theme.themeId = "everplay" } }
     ]
-    readonly property var steps: withIntro ? introSteps : withRedesign ? redesignSteps : withPlugins ? pluginSteps : withDesign ? designSteps : withAhead ? aheadSteps : withCache ? cacheSteps : withSmall ? smallSteps : withSharedCover ? sharedCoverSteps : withQueue ? queueSteps : withRoomAdd ? roomAddSteps : withAccount ? accountSteps : withTrackOrder ? trackOrderSteps : withOrder ? orderSteps : withFolders ? folderSteps : withResize ? resizeSteps : withPassword ? passwordSteps : withMirrors ? mirrorSteps : withLibrarySync ? librarySyncSteps : withMobile ? mobileSteps : withOnline ? onlineSteps : withListen ? listenSteps : withAudioDevice ? audioDeviceSteps : withScProfile ? scProfileSteps : withDiscover ? discoverSteps : withScroll ? scrollSteps : withBlur ? blurSteps : withSpotifyArtist ? spotifyArtistSteps : withSources ? sourceSteps : withArtistSongs ? artistSongSteps : withAlign ? alignSteps : withScSeekLiked ? scSeekLikedSteps : withFakeTiming ? fakeTimingSteps : withScSeek ? scSeekSteps : withSearchTitle ? searchTitleSteps : withKaraoke ? karaokeSteps : withScLogin ? scLoginSteps : withSoundCloud ? soundcloudSteps : withRecognize ? recognizeSteps : withThemes ? themeSteps : withStats ? statsSteps : withSearchPlaylists ? searchPlaylistSteps : withOverlayCycle ? overlayCycleSteps : withHotkey ? hotkeySteps : withOverlay ? overlaySteps : withLiked ? likedSteps : withArtist ? artistSteps : withHome ? homeSteps : withLyrics ? lyricSteps : withPlaylists ? playlistSteps : withAlbums ? albumSteps : withSeek ? seekSteps : withPerf ? perfSteps : withCovers ? coverSteps : withMatch ? matchSteps : withEq ? eqSteps : withBig ? bigSteps : withEngine ? engineSteps : withLogin ? loginSteps : baseSteps
+    readonly property var steps: withIntro ? introSteps : withRedesign ? redesignSteps : withPlugins ? pluginSteps : withDesign ? designSteps : withAhead ? aheadSteps : withCache ? cacheSteps : withSmall ? smallSteps : withSharedCover ? sharedCoverSteps : withQueue ? queueSteps : withRoomAdd ? roomAddSteps : withAccount ? accountSteps : withTrackOrder ? trackOrderSteps : withOrder ? orderSteps : withFolders ? folderSteps : withResize ? resizeSteps : withPassword ? passwordSteps : withMirrors ? mirrorSteps : withLibrarySync ? librarySyncSteps : withMobile ? mobileSteps : withOnline ? onlineSteps : withListen ? listenSteps : withAudioDevice ? audioDeviceSteps : withFlac ? flacSteps : withScProfile ? scProfileSteps : withDiscover ? discoverSteps : withScroll ? scrollSteps : withBlur ? blurSteps : withSpotifyArtist ? spotifyArtistSteps : withSources ? sourceSteps : withArtistSongs ? artistSongSteps : withAlign ? alignSteps : withScSeekLiked ? scSeekLikedSteps : withFakeTiming ? fakeTimingSteps : withScSeek ? scSeekSteps : withSearchTitle ? searchTitleSteps : withKaraoke ? karaokeSteps : withScLogin ? scLoginSteps : withSoundCloud ? soundcloudSteps : withRecognize ? recognizeSteps : withThemes ? themeSteps : withStats ? statsSteps : withSearchPlaylists ? searchPlaylistSteps : withOverlayCycle ? overlayCycleSteps : withHotkey ? hotkeySteps : withOverlay ? overlaySteps : withLiked ? likedSteps : withArtist ? artistSteps : withHome ? homeSteps : withLyrics ? lyricSteps : withPlaylists ? playlistSteps : withAlbums ? albumSteps : withSeek ? seekSteps : withPerf ? perfSteps : withCovers ? coverSteps : withMatch ? matchSteps : withEq ? eqSteps : withBig ? bigSteps : withEngine ? engineSteps : withLogin ? loginSteps : baseSteps
     property double navStart: 0
     property bool measuring: false
     readonly property var bigSteps: [
@@ -1569,6 +1642,11 @@ Item {
     }
     Connections {
         target: SoundCloud
+        enabled: root.dir !== ""
+        function onNotice(text, icon) { console.log("tour: notice:", text) }
+    }
+    Connections {
+        target: OpenMusic
         enabled: root.dir !== ""
         function onNotice(text, icon) { console.log("tour: notice:", text) }
     }

@@ -7,14 +7,17 @@ Item {
     property var args: ({})
     property string query: ""
     property int filter: 0
-    readonly property var filterKeys: ["", "local", "youtube", "soundcloud", "radio"]
+    readonly property var filterKeys: ["", "local", "youtube", "soundcloud", "radio", "flac"]
+    // The "FLAC" filter only while the open FLAC sources are turned on (Sources).
+    readonly property bool flacOn: OpenMusic.enabled
+    onFlacOnChanged: if (!flacOn && filter === 5) filter = 0
     readonly property bool searching: query.trim().length > 0 || filter > 0
     // What is found, in the order it's shown: your library (files, radio), then YouTube Music and Spotify
     // (your own tracks there, then the YouTube Music catalog), then SoundCloud, then playlists.
     readonly property var results: {
         if (Library.tracks.revision < 0)   // never: the read makes the binding re-run (a bare read is compiled away)
             return []
-        if (filter === 2 || filter === 3)
+        if (filter === 2 || filter === 3 || filter === 5)
             return []
         if (filter === 0)
             return Library.search(query, "local").concat(Library.search(query, "radio"))
@@ -47,10 +50,29 @@ Item {
     }
     property int soundcloudShown: 20
 
+    // The open FLAC sources (once turned on) for "All" and "FLAC": your liked ones, then what was found.
+    readonly property bool flacEnabled: flacOn && query.trim().length > 1 && (filter === 0 || filter === 5)
+    readonly property var flac: {
+        if (Library.tracks.revision < 0 || OpenMusic.resultsRevision < 0)
+            return []
+        if (!flacEnabled)
+            return []
+        const own = Library.search(query, "archive").concat(Library.search(query, "commons"))
+        const seen = new Set(own)
+        return own.concat(Library.openMusicResults().filter(r => !seen.has(r)))
+    }
+    // Albums and concerts on the Internet Archive: all with "FLAC" picked, a row of them for "All".
+    readonly property var flacAlbums: !flacEnabled ? [] : filter === 5 ? OpenMusic.albumResults : OpenMusic.albumResults.slice(0, 6)
+    property int flacShown: 20
+    function openFlacAlbum(a) {
+        Nav.navigate("playlist", { kind: "flaccollection", playlistId: a.id, title: a.title, subtitle: a.subtitle,
+                                   cover: a.cover })
+    }
+
     // Your playlists whose name fits ({ p, index } in Library.playlists), then public ones on YouTube Music.
     readonly property var ownPlaylists: {
         const q = query.trim().toLowerCase()
-        if (q.length === 0 || filter === 1 || filter === 4)
+        if (q.length === 0 || filter === 1 || filter === 4 || filter === 5)
             return []
         const out = []
         Library.playlists.forEach((p, i) => {
@@ -94,8 +116,8 @@ Item {
 
     // Rows are built at once (Repeater), so long result lists show in parts.
     property int shown: 40
-    onQueryChanged: { shown = 40; onlineShown = 40; soundcloudShown = 20; onlineTimer.restart(); rememberState() }
-    onFilterChanged: { shown = 40; onlineShown = 40; soundcloudShown = 20; onlineTimer.restart(); rememberState() }
+    onQueryChanged: { shown = 40; onlineShown = 40; soundcloudShown = 20; flacShown = 20; onlineTimer.restart(); rememberState() }
+    onFilterChanged: { shown = 40; onlineShown = 40; soundcloudShown = 20; flacShown = 20; onlineTimer.restart(); rememberState() }
     function rememberState() {
         if (Nav.page === "search")
             Nav.remember({ query: query, filter: filter })
@@ -109,6 +131,8 @@ Item {
                 YouTube.search(page.query)
             if (page.soundcloudEnabled)
                 SoundCloud.search(page.query)
+            if (page.flacEnabled)
+                OpenMusic.search(page.query)
         }
     }
 
@@ -148,7 +172,7 @@ Item {
     }
     Component.onCompleted: {
         if (args && args.filter !== undefined)
-            filter = args.filter
+            filter = args.filter === 5 && !flacOn ? 0 : args.filter
         if (args && args.query)
             field.text = args.query
         field.forceActiveFocus()
@@ -250,8 +274,9 @@ Item {
         return own.concat(pub, sc)
     }
     // Only where the tracks keep a comfortable width next to it (the field and filters need ~500 px).
-    readonly property bool sideShown: page.width > 1000 && page.searching && filter !== 1 && filter !== 4
+    readonly property bool sideShown: page.width > 1000 && page.searching && filter !== 1 && filter !== 4 && filter !== 5
     readonly property bool lookingUp: (onlineEnabled && YouTube.searching) || (soundcloudEnabled && SoundCloud.searching)
+                                      || (flacEnabled && OpenMusic.searching)
 
     Rectangle {
         id: sidePanel
@@ -350,7 +375,7 @@ Item {
                     clip: interactive
                     SegmentedTabs {
                         id: filters
-                        model: [qsTr("All"), qsTr("Local"), "YouTube Music", "SoundCloud", qsTr("Radio")]
+                        model: [qsTr("All"), qsTr("Local"), "YouTube Music", "SoundCloud", qsTr("Radio")].concat(page.flacOn ? ["FLAC"] : [])
                         currentIndex: page.filter
                         onActivated: i => page.filter = i
                     }
@@ -515,11 +540,87 @@ Item {
                 onClicked: page.soundcloudShown = page.soundcloud.length
             }
 
+            // ---- the open FLAC sources: albums and concerts, then single files ----
+            RowLayout {
+                visible: page.flac.length > 0 || page.flacAlbums.length > 0 || (page.flacEnabled && OpenMusic.searching)
+                Layout.fillWidth: true
+                Layout.topMargin: page.results.length > 0 || page.online.length > 0 || page.soundcloud.length > 0 ? 26 : 0
+                Layout.bottomMargin: 8
+                spacing: 10
+                Icon { name: "lossless"; size: 20; color: "#9cc3c9" }
+                Text {
+                    Layout.fillWidth: true
+                    text: qsTr("FLAC from open sources")
+                    color: Theme.text
+                    font.family: Theme.fontDisplay
+                    font.pixelSize: 18
+                    font.weight: Font.DemiBold
+                }
+                Spinner { visible: OpenMusic.searching; size: 18; color: Theme.textDim }
+            }
+            Text {
+                visible: page.flacEnabled && page.filter === 5 && (page.flac.length > 0 || page.flacAlbums.length > 0)
+                Layout.fillWidth: true
+                Layout.bottomMargin: 8
+                text: qsTr("Freely shared recordings from the Internet Archive and Wikimedia Commons — the licence is in each track's ⋯ menu.")
+                color: Theme.textDim
+                font.pixelSize: 13
+                wrapMode: Text.WordWrap
+            }
+
+            Flow {
+                visible: page.flacAlbums.length > 0
+                Layout.fillWidth: true
+                Layout.bottomMargin: 14
+                spacing: 18
+                Repeater {
+                    model: page.flacAlbums
+                    AlbumCard {
+                        required property var modelData
+                        required property int index
+                        width: 168
+                        shadow: playlistShadow
+                        title: modelData.title
+                        subtitle: modelData.subtitle
+                        source: "archive"
+                        cover: modelData.cover
+                        colorA: "#9cc3c9"
+                        colorB: "#2c4a4f"
+                        seed: index
+                        revealDelay: index * 30
+                        onClicked: page.openFlacAlbum(modelData)
+                        onPlayClicked: page.openFlacAlbum(modelData)
+                    }
+                }
+            }
+
+            Repeater {
+                model: Math.min(page.flac.length, page.flacShown)
+                TrackRow {
+                    required property int index
+                    Layout.fillWidth: true
+                    trackIndex: page.flac[index] ?? -1
+                    number: index + 1
+                    queue: page.flac
+                    revealDelay: Math.min(index, 12) * 32
+                }
+            }
+
+            PillButton {
+                visible: page.flac.length > page.flacShown
+                Layout.topMargin: 6
+                kind: "ghost"
+                icon: "expandMore"
+                text: qsTr("Show all (%1)").arg(page.flac.length)
+                onClicked: page.flacShown = page.flac.length
+            }
+
             // Playlists: yours whose name fits, then public ones on YouTube Music and SoundCloud
             RowLayout {
                 visible: !page.sideShown && page.foundPlaylists.length > 0
                 Layout.fillWidth: true
-                Layout.topMargin: page.results.length > 0 || page.online.length > 0 || page.soundcloud.length > 0 ? 26 : 0
+                Layout.topMargin: page.results.length > 0 || page.online.length > 0 || page.soundcloud.length > 0
+                                  || page.flac.length > 0 || page.flacAlbums.length > 0 ? 26 : 0
                 Layout.bottomMargin: 8
                 spacing: 10
                 Icon { name: "library"; size: 20; color: "#cf9d9d" }
@@ -594,6 +695,7 @@ Item {
 
             ColumnLayout {
                 visible: page.results.length === 0 && page.online.length === 0 && page.soundcloud.length === 0
+                         && page.flac.length === 0 && page.flacAlbums.length === 0
                          && page.foundPlaylists.length === 0 && !page.lookingUp
                 Layout.alignment: Qt.AlignHCenter
                 Layout.topMargin: 50

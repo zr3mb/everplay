@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Dialogs
 import Everplay
 
 // Managing music sources. Local files and YouTube Music really work;
@@ -779,6 +780,99 @@ Item {
                     Layout.preferredWidth: 100
                     Layout.alignment: Qt.AlignTop
                     spacing: 18
+
+                    // FLAC files that may be shared freely — off until the user turns it on.
+                    SourceCard {
+                        source: page.src("openflac")
+                        status: OpenMusic.enabled ? "connected" : "available"
+                        detail: !OpenMusic.enabled ? qsTr("Off")
+                                : OpenMusic.downloads.length > 0 ? qsTr("Saving %n files…", "", OpenMusic.downloads.length)
+                                : qsTr("Shown in Search")
+
+                        Hint {
+                            text: qsTr("Everplay only looks where music may be shared: concerts taped with the bands' permission (Live Music Archive), netlabel releases and Creative Commons uploads on the Internet Archive, and freely licensed recordings on Wikimedia Commons. Most chart albums aren't there.")
+                        }
+                        SettingRow {
+                            icon: "lossless"
+                            title: qsTr("Search open FLAC sources")
+                            description: qsTr("Results get their own section in Search, and play straight from the file")
+                            Toggle { checked: OpenMusic.enabled; onToggled: c => OpenMusic.enabled = c }
+                        }
+                        SettingRow {
+                            visible: OpenMusic.enabled
+                            icon: "archive"
+                            title: "Internet Archive"
+                            description: qsTr("Live Music Archive concerts, netlabels and Creative Commons uploads")
+                            Toggle { checked: OpenMusic.archiveEnabled; onToggled: c => OpenMusic.archiveEnabled = c }
+                        }
+                        SettingRow {
+                            visible: OpenMusic.enabled
+                            icon: "globe"
+                            title: "Wikimedia Commons"
+                            description: qsTr("Public-domain and freely licensed recordings, much of it classical")
+                            Toggle { checked: OpenMusic.commonsEnabled; onToggled: c => OpenMusic.commonsEnabled = c }
+                        }
+                        ListLine {
+                            visible: OpenMusic.enabled
+                            icon: "download"
+                            iconColor: "#9cc3c9"
+                            title: OpenMusic.downloadFolder
+                            detail: qsTr("Change")
+                            onActivated: downloadFolderDialog.open()
+                        }
+                        Hint {
+                            visible: OpenMusic.enabled
+                            text: qsTr("Saved files go to this folder and join your library as local files. Use ⋯ → Save the FLAC file on a track, or save a whole concert from its page.")
+                        }
+                        Repeater {
+                            model: OpenMusic.downloads
+                            ColumnLayout {
+                                required property var modelData
+                                Layout.fillWidth: true
+                                spacing: 6
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: modelData.title
+                                        color: Theme.text
+                                        font.pixelSize: 13
+                                        elide: Text.ElideRight
+                                    }
+                                    Text {
+                                        text: modelData.progress > 0 ? Math.round(modelData.progress * 100) + "%" : qsTr("Waiting")
+                                        color: Theme.textDim
+                                        font.pixelSize: 12
+                                        font.features: { "tnum": 1 }
+                                    }
+                                }
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    height: 4
+                                    radius: 2
+                                    color: Theme.alpha(Theme.text, 0.08)
+                                    Rectangle {
+                                        width: parent.width * modelData.progress
+                                        height: parent.height
+                                        radius: 2
+                                        color: "#9cc3c9"
+                                    }
+                                }
+                            }
+                        }
+                        PillButton {
+                            visible: OpenMusic.downloads.length > 0
+                            kind: "ghost"
+                            icon: "close"
+                            text: qsTr("Stop saving")
+                            onClicked: OpenMusic.cancelDownloads()
+                        }
+                        FolderDialog {
+                            id: downloadFolderDialog
+                            title: qsTr("Where to save FLAC files")
+                            onAccepted: OpenMusic.downloadFolder = String(selectedFolder)
+                        }
+                    }
 
                     SourceCard {
                         source: page.src("radio")

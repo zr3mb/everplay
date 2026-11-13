@@ -6,6 +6,7 @@
 #include "TagLibPath.h"
 #include "spotify/SpotifyService.h"
 #include "youtube/YouTubeService.h"
+#include "openmusic/OpenMusicService.h"
 
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -498,8 +499,8 @@ void LyricsService::runSpeech(SpeechMode mode)
     QString videoId;
     if (m_track.source == QLatin1String("youtube"))
         videoId = m_track.path;
-    else if (m_track.source == QLatin1String("soundcloud"))
-        videoId = m_track.id;   // SoundCloud's own stream, through the same resolver
+    else if (m_track.source == QLatin1String("soundcloud") || OpenMusicService::isOpenSource(m_track.source))
+        videoId = m_track.id;   // SoundCloud's own stream or an open source's FLAC file, through the same resolver
     else if (m_track.source == QLatin1String("spotify"))
         videoId = SpotifyService::instance()->matchedVideoId(m_track.id);
     if (m_track.source == QLatin1String("spotify") && videoId.isEmpty()) {

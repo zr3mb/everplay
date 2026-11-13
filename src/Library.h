@@ -113,6 +113,8 @@ public:
     Q_INVOKABLE QVariantList libraryRows() const;           // local + liked on YouTube Music
     Q_INVOKABLE QVariantList onlineResults() const;         // latest YouTube Music search results
     Q_INVOKABLE QVariantList soundCloudResults() const;     // latest SoundCloud search results
+    Q_INVOKABLE QVariantList openMusicResults() const;      // latest search results from the open FLAC sources
+    Q_INVOKABLE QVariantList openMusicCollectionRows(const QString &itemId);   // an Internet Archive album / concert
     Q_INVOKABLE QVariantList recommendedRows() const;       // "Recommended for you" (Recommendations)
     Q_INVOKABLE QVariantList newArtistRows() const;         // the picks by artists new to the user
     Q_INVOKABLE QVariantList radioRows(const QString &seedId) const;   // a track's radio (Radio)
@@ -189,6 +191,7 @@ private:
 
     QFutureWatcher<Scanner::Result> m_watcher;
     QTimer m_rebuildTimer;
+    QTimer m_savedScan;          // a FLAC file was saved from an open source: scan for it
     QNetworkAccessManager m_net;
     QSet<QString> m_paletteDone;
     QSet<QString> m_sendingCovers;   // cover keys on their way to the server

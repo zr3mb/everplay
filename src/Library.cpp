@@ -10,6 +10,7 @@
 #include "Recommendations.h"
 #include "Radio.h"
 #include "soundcloud/SoundCloudService.h"
+#include "openmusic/OpenMusicService.h"
 #include "spotify/SpotifyService.h"
 #include "youtube/YouTubeService.h"
 #ifdef Q_OS_ANDROID
@@ -151,6 +152,10 @@ Library::Library(QObject *parent)
             SoundCloudService::instance()->setTrackLiked(id, liked);
             return;
         }
+        if (OpenMusicService::isOpenSource(track.source)) {
+            OpenMusicService::instance()->setTrackLiked(track, liked);   // keeps the track's data too
+            return;
+        }
         if (liked)
             m_liked.insert(id);
         else
@@ -193,6 +198,28 @@ Library::Library(QObject *parent)
     connect(SoundCloudService::instance(), &SoundCloudService::accountChanged, this, &Library::requestRebuild);
     connect(SoundCloudService::instance(), &SoundCloudService::tracksAdded, m_tracks, &TrackModel::appendTracks);
     connect(SpotifyService::instance(), &SpotifyService::tracksAdded, m_tracks, &TrackModel::appendTracks);
+    OpenMusicService *open = OpenMusicService::instance();
+    connect(open, &OpenMusicService::tracksAdded, m_tracks, &TrackModel::appendTracks);
+    connect(open, &OpenMusicService::dataChanged, this, &Library::requestRebuild);
+    // A saved FLAC file joins the library as a local file: its folder is scanned (and added, when it
+    // isn't in one of the library's folders yet). A burst of saves (an album) scans once.
+    m_savedScan.setSingleShot(true);
+    m_savedScan.setInterval(1500);
+    connect(&m_savedScan, &QTimer::timeout, this, [this] { rescan(false); });
+    connect(open, &OpenMusicService::fileSaved, this, [this](const QString &folder) {
+        const QString root = OpenMusicService::instance()->downloadFolder();
+        const bool known = std::any_of(m_folders.cbegin(), m_folders.cend(),
+                                       [&](const QString &f) { return Scanner::isUnder(folder, f); });
+        if (!known && QDir(root).exists()) {
+            m_folders.erase(std::remove_if(m_folders.begin(), m_folders.end(),
+                                           [&](const QString &f) { return Scanner::isUnder(f, root); }),
+                            m_folders.end());
+            m_folders << root;
+            saveFolders();
+            emit foldersChanged();
+        }
+        m_savedScan.start();
+    });
     // Shared playlists, a listening room's queue, opened links: their tracks join the model as they come.
     connect(OnlineService::instance(), &OnlineService::tracksAdded, m_tracks, &TrackModel::appendTracks);
     connect(OnlineService::instance(), &OnlineService::playlistsChanged, this, [this] {
@@ -228,6 +255,9 @@ void Library::buildSources()
         QVariantMap { { "id", "soundcloud" }, { "name", "SoundCloud" },
                       { "description", tr("Search and play anything on SoundCloud; sign in for your likes and playlists.") },
                       { "icon", "wavecloud" }, { "status", "disconnected" }, { "color", QColor("#d9a27e") } },
+        QVariantMap { { "id", "openflac" }, { "name", tr("Open FLAC sources") },
+                      { "description", tr("Lossless FLAC files that may be shared freely — concerts from the Live Music Archive, netlabels and Creative Commons music on the Internet Archive, public-domain recordings on Wikimedia Commons.") },
+                      { "icon", "lossless" }, { "status", "available" }, { "color", QColor("#9cc3c9") } },
         QVariantMap { { "id", "radio" }, { "name", tr("Internet radio") },
                       { "description", tr("Icecast / SHOUTcast streaming stations and saved favorites.") },
                       { "icon", "radio" }, { "status", "available" }, { "color", QColor("#cdb68e") } },
@@ -466,6 +496,7 @@ void Library::rebuildModel()
     all << yt->tracks();
     all << SpotifyService::instance()->tracks();
     all << SoundCloudService::instance()->tracks();
+    all << OpenMusicService::instance()->tracks();
     // Tracks kept in local playlists (search results, Spotify) that no source provides anymore.
     {
         QSet<QString> present;
@@ -1125,7 +1156,8 @@ void Library::ensurePalette(int row)
     if (!m_tracks->isValidRow(row))
         return;
     const Track &t = m_tracks->at(row);
-    if ((t.source != QLatin1String("youtube") && t.source != QLatin1String("spotify") && t.source != QLatin1String("soundcloud"))
+    if ((t.source != QLatin1String("youtube") && t.source != QLatin1String("spotify") && t.source != QLatin1String("soundcloud")
+         && !OpenMusicService::isOpenSource(t.source))
         || t.demo
         || !t.cover.startsWith(QLatin1String("http"))
         || m_paletteDone.contains(t.id))
@@ -1142,6 +1174,7 @@ void Library::ensurePalette(int row)
         const auto [a, b] = Scanner::paletteFromImage(image);
         YouTubeService::instance()->setTrackColors(id, a, b);
         SoundCloudService::instance()->setTrackColors(id, a, b);
+        OpenMusicService::instance()->setTrackColors(id, a, b);
         m_tracks->setColors(m_tracks->rowOf(id), a, b);
     });
 }
@@ -1453,6 +1486,8 @@ QVariantList Library::rowsForContext(const QString &context)
     }
     if (context.startsWith(QLatin1String("scc:")))
         return soundCloudCollectionRows(context.mid(4));
+    if (context.startsWith(QLatin1String("flacc:")))
+        return openMusicCollectionRows(context.mid(6));
     if (context.startsWith(QLatin1String("ytartist:")))
         return artistSongRows(context.mid(9));
     if (context.startsWith(QLatin1String("ytc:")))
@@ -1479,6 +1514,7 @@ QVariantList Library::libraryRows() const
     out << rowsOfIds(YouTubeService::instance()->likedIds());
     out << rowsOfIds(SpotifyService::instance()->likedIds());
     out << rowsOfIds(SoundCloudService::instance()->likedIds());
+    out << rowsOfIds(OpenMusicService::instance()->likedIds());
     return out;
 }
 
@@ -1499,6 +1535,18 @@ QVariantList Library::onlineResults() const
 QVariantList Library::soundCloudResults() const
 {
     return rowsOfIds(SoundCloudService::instance()->searchIds());
+}
+
+QVariantList Library::openMusicResults() const
+{
+    return rowsOfIds(OpenMusicService::instance()->searchIds());
+}
+
+QVariantList Library::openMusicCollectionRows(const QString &itemId)
+{
+    OpenMusicService *open = OpenMusicService::instance();
+    open->ensureCollection(itemId);
+    return rowsOfIds(open->collectionTrackIds(itemId));
 }
 
 QVariantList Library::newArtistRows() const

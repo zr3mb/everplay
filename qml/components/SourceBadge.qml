@@ -1,7 +1,7 @@
 import QtQuick
 import Everplay
 
-// Track source badge: local file / YouTube Music / Spotify / SoundCloud / radio.
+// Track source badge: local file / YouTube Music / Spotify / SoundCloud / the open FLAC sources / radio.
 Rectangle {
     id: root
     property string source: "local"
@@ -14,6 +14,8 @@ Rectangle {
         youtube: { label: "YouTube Music", icon: "playCircle", color: "#cf9d9d" },
         spotify: { label: "Spotify",       icon: "music",      color: "#5fd58a" },
         soundcloud: { label: "SoundCloud", icon: "wavecloud",      color: "#d9a27e" },
+        archive: { label: "Internet Archive", icon: "archive", color: "#9cc3c9" },
+        commons: { label: "Wikimedia Commons", icon: "globe",  color: "#a9b6d9" },
         radio:   { label: qsTr("Radio"),       icon: "live",       color: "#cdb68e" },
         own:     { label: qsTr("Yours"),       icon: "library",    color: "#b7aac9" },
         stream:  { label: qsTr("Stream"),      icon: "link",       color: "#93a8c3" }
