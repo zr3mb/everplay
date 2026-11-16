@@ -20,6 +20,9 @@ ApplicationWindow {
     readonly property bool ready: shellLoader.status === Loader.Ready
     readonly property bool maximized: visibility === Window.Maximized || visibility === Window.FullScreen
     onVisibilityChanged: visibility => { if (visibility === Window.Minimized) Memory.trimSoon(500) }
+    // Closing the main window quits Everplay. Qt alone would keep it running while the lyrics overlay
+    // (a top-level window of its own) is on screen, and hiding the overlay later doesn't end it either.
+    onClosing: Qt.quit()
 
     // The interface's files are compiled on a thread of their own from the start; it's built (at once, which is
     // faster than piece by piece between frames) when the window's first frame is on screen.
