@@ -1,11 +1,12 @@
 #include <QDateTime>
 #include <QScreen>
 #include <atomic>
+#include <functional>
 #include <memory>
-#include <utility>
 #include "AppPaths.h"
 #include "Language.h"
 #include "online/OnlineService.h"
+#include "platform/EarlyGraphics.h"
 #include "platform/GameOverlay.h"
 
 #include <QAtomicInt>
@@ -17,6 +18,7 @@
 #include <QNetworkDiskCache>
 #include <QQmlApplicationEngine>
 #include <QQmlNetworkAccessManagerFactory>
+#include <QQmlProperty>
 #include <QQuickStyle>
 #include <QQuickWindow>
 #include <QTimer>
@@ -49,6 +51,7 @@ int main(int argc, char *argv[])
 {
     QElapsedTimer startClock;   // EVERPLAY_PERF_DEBUG: how long the start takes
     startClock.start();
+    EarlyGraphics::start();     // the window's GPU device, made while everything below runs
     // Images (covers) give up their memory copy once they're uploaded to the GPU, and skip the shared
     // texture atlas — covers are drawn from a mipmapped copy of their own, so the atlas only kept a
     // second one. Variables set by the user win. Not on Android: it drops the GPU's copies whenever the app
@@ -111,25 +114,64 @@ int main(int argc, char *argv[])
         &engine, &QQmlApplicationEngine::objectCreationFailed, &app,
         [] { QCoreApplication::exit(-1); }, Qt::QueuedConnection);
 
+    // Only the window is made here, so it comes on screen at once; the interface (Shell.qml) is built into
+    // it after its first frame.
     engine.loadFromModule("Everplay", "Main");
+    auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().value(0));
     const bool perfDebug = qEnvironmentVariableIsSet("EVERPLAY_PERF_DEBUG");
+    if (perfDebug && window) {
+        qInfo("perf: window shown %lld ms after start", startClock.elapsed());
+        // From the render thread, as it happens (queued, it would wait for the GUI thread). The first frame is
+        // never drawn before this: the window's first expose comes after Main.qml is made.
+        QObject::connect(window, &QQuickWindow::frameSwapped, window, [startClock] {
+            qInfo("perf: first frame on screen %lld ms after start", startClock.elapsed());
+        }, Qt::ConnectionType(Qt::DirectConnection | Qt::SingleShotConnection));
+    }
+    // The window is shown but not drawn yet: it gets its background and its GPU device now. While the device
+    // is still being made, the services the interface uses are (Theme makes Player, Library, Plugins…).
+    EarlyGraphics::prepare(window, [&engine] { engine.singletonInstance<QObject *>("Everplay", "Theme"); });
+#ifdef Q_OS_WIN
+    // When the first Qt::Window is made, Qt's Windows plugin asks Direct3D 9 which GPU drives the main
+    // display (a workaround for an old AMD driver bug, QTBUG-50371), and that took ~140 ms before the
+    // window could appear. Main.qml makes it as a dialog, which skips the check — to Windows it's the
+    // same frameless window — and here, once it exists, it becomes a plain window again. (After the
+    // device above: the change redraws the window at once.)
+    if (window && window->handle() && window->type() == Qt::Dialog)
+        window->setFlags((window->flags() & ~Qt::WindowType_Mask) | Qt::Window);
+#endif
+    // Runs `run` `delay` ms after the interface is built (Main.qml's "ready").
+    const auto afterInterface = [window](int delay, const std::function<void()> &run) {
+        if (!window)
+            return;
+        auto *timer = new QTimer(window);
+        timer->setSingleShot(true);
+        timer->setInterval(delay);
+        QObject::connect(timer, &QTimer::timeout, timer, [timer, run] {
+            run();
+            timer->deleteLater();
+        });
+        if (window->property("ready").toBool())
+            timer->start();
+        else
+            QQmlProperty(window, QStringLiteral("ready")).connectNotifySignal(timer, SLOT(start()));
+    };
     if (perfDebug)
-        qInfo("perf: the interface was built %lld ms after start", startClock.elapsed());
+        afterInterface(0, [startClock] { qInfo("perf: the interface was built %lld ms after start", startClock.elapsed()); });
     QObject::connect(GameOverlay::instance(), &GameOverlay::linkReceived, OnlineService::instance(), &OnlineService::openLink);
     if (!link.isEmpty())
-        QTimer::singleShot(1200, OnlineService::instance(), [link] { OnlineService::instance()->openLink(link); });
+        afterInterface(1200, [link] { OnlineService::instance()->openLink(link); });
     if (overlayRequest)
-        QTimer::singleShot(1500, GameOverlay::instance(), &GameOverlay::show);
+        afterInterface(1500, [] { GameOverlay::instance()->show(); });
     else if (lyricsOverlayRequest)
-        QTimer::singleShot(1500, GameOverlay::instance(), &GameOverlay::showLyrics);
+        afterInterface(1500, [] { GameOverlay::instance()->showLyrics(); });
 
     // After a GPU reset the scene graph rebuilds its textures from the images' memory copies, which
     // QSG_TRANSIENT_IMAGES dropped — so the images are loaded again (Theme.imageEpoch changes their URLs).
-    auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().value(0));
-    if (QObject *theme = engine.singletonInstance<QObject *>("Everplay", "Theme");
-        window && theme && qgetenv("QSG_TRANSIENT_IMAGES") == "1") {
-        QObject::connect(window, &QQuickWindow::sceneGraphInvalidated, theme, [theme] {
-            theme->setProperty("imageEpoch", theme->property("imageEpoch").toInt() + 1);
+    // Theme is looked up then: it may not be made yet here.
+    if (window && qgetenv("QSG_TRANSIENT_IMAGES") == "1") {
+        QObject::connect(window, &QQuickWindow::sceneGraphInvalidated, &engine, [&engine] {
+            if (QObject *theme = engine.singletonInstance<QObject *>("Everplay", "Theme"))
+                theme->setProperty("imageEpoch", theme->property("imageEpoch").toInt() + 1);
         }, Qt::QueuedConnection);
     }
 
@@ -137,16 +179,6 @@ int main(int argc, char *argv[])
     // through it, so a stall over ~200 ms is heard as a gap.
     QTimer stallProbe;
     QElapsedTimer stallClock;
-    if (perfDebug && window) {
-        // frameSwapped comes from the render thread, queued here: two frames can be queued before the first
-        // one runs, so a flag (not the connection) decides — and nothing is freed under the second one.
-        auto reported = std::make_shared<bool>(false);
-        QObject::connect(window, &QQuickWindow::frameSwapped, window, [reported, startClock] {
-            if (std::exchange(*reported, true))
-                return;
-            qInfo("perf: first frame on screen %lld ms after start", startClock.elapsed());
-        }, Qt::SingleShotConnection);
-    }
     // EVERPLAY_FPS_DEBUG=1: frames drawn per second (only seconds with frames: an idle window draws none),
     // next to the refresh rate of the screen the window is on.
     QTimer fpsTimer;
