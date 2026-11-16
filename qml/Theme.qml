@@ -153,6 +153,20 @@ Item {
     // Bumped by main.cpp after a GPU reset: images then load again (they keep no memory copy).
     property int imageEpoch: 0
 
+    // The next start shows the window in this colour before the interface (and this theme) is made (Main.qml).
+    // Saved once the colour settles: it animates when the theme changes, and a plugin may change it.
+    onBgChanged: windowColorSave.restart()
+    Component.onCompleted: windowColorSave.restart()
+    Timer {
+        id: windowColorSave
+        interval: 1500
+        onTriggered: {
+            const color = theme.bg.toString()
+            if (Prefs.stringValue("ui/windowColor", "") !== color)
+                Prefs.setValue("ui/windowColor", color)
+        }
+    }
+
     function alpha(c, a) {
         const col = Qt.lighter(c, 1.0)
         return Qt.rgba(col.r, col.g, col.b, a)

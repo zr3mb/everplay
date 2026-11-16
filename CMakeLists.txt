@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(Everplay VERSION 0.31.0 LANGUAGES CXX)
+project(Everplay VERSION 0.31.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -86,6 +86,7 @@ qt_add_qml_module(Everplay
         src/online/OnlineService.h    src/online/OnlineService.cpp
     QML_FILES
         qml/Main.qml
+        qml/Shell.qml
         qml/Theme.qml
         qml/Icons.qml
         qml/Nav.qml
@@ -245,12 +246,13 @@ if(UNIX AND NOT APPLE AND NOT ANDROID)
 endif()
 
 if(WIN32)
-    # System Media Transport Controls (Windows media flyout) + media keys
+    # System Media Transport Controls (Windows media flyout) + media keys; the window's early GPU device
     target_sources(Everplay PRIVATE
         src/platform/WinRtMedia.h
         src/platform/WindowsMediaControls.h src/platform/WindowsMediaControls.cpp
+        src/platform/EarlyGraphics.h src/platform/EarlyGraphics.cpp
         packaging/windows/everplay-app.rc)   # the program's icon
-    target_link_libraries(Everplay PRIVATE runtimeobject shlwapi shcore)
+    target_link_libraries(Everplay PRIVATE runtimeobject shlwapi shcore d3d11 dxgi)
     target_compile_definitions(Everplay PRIVATE EVERPLAY_SMTC)
 endif()
 

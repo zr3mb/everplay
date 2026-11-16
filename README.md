@@ -337,6 +337,28 @@ Appearance and layout settings (`[ui]` in `settings.ini`) are remembered between
 - `--tour <dir> --tour-flac "<query>"` turns it on, searches, plays and seeks, opens the first album and saves its
   shortest file into the library.
 
+## Start-up — how the window appears at once
+
+The window is on screen ~0.1 s after Everplay starts, filled with its background; the interface slides into it
+by ~0.5 s. Before, nothing showed until all of it was built and drawn (~0.65 s, more on a cold start).
+
+- **The window first, the interface after:** `Main.qml` is only the window. Its colour is the one it had last
+  time (`Theme` saves it as `ui/windowColor`), since the theme isn't made yet. The interface is `Shell.qml`; its
+  files compile on a thread of their own from the start, and it's built once the window's first frame is on
+  screen, then arrives with its usual intro (panels one after another, the backdrop fading in).
+- **Windows: no GPU check before the window:** Qt's Windows plugin asks Direct3D 9 which GPU drives the main
+  display when the first `Qt::Window` is made (a workaround for an old AMD driver bug, QTBUG-50371), which held
+  the window back ~140 ms. The window is made as a dialog, which skips it — to Windows the same frameless
+  window — and becomes a plain window right after (`main.cpp`).
+- **Windows: the GPU device in parallel** (`src/platform/EarlyGraphics.*`): making the Direct3D 11 device loads the
+  GPU driver (~150–200 ms), and Qt makes it only when the window is first exposed. Everplay makes it on its
+  own thread as `main()` begins, and the window adopts it (`QQuickWindow::setGraphicsDevice`); after a GPU
+  reset the window makes its own again. Until its first frame, the window is filled with its colour through
+  GDI, so it isn't see-through. While the device is still being made, the services (`Theme` → `Player`,
+  `Library`, `Plugins`…) are made, so the interface needs less after the first frame.
+- `EVERPLAY_PERF_DEBUG=1` logs when the window was shown, when its first frame was drawn and when the interface
+  was built, in ms after start.
+
 ## Motion and frame rate
 
 - **Frame rate:** Qt Quick draws in step with the screen's refresh, so on a 144/165 Hz monitor animations run at
@@ -713,6 +735,7 @@ of every word (the word-by-word highlight):
 | `src/online/OnlineService.*` | `Online` singleton: the server account, share links, shared playlists, listening rooms (WebSocket, driving the player), `everplay://` links |
 | `src/platform/DiscordPresence.*` | `Discord` singleton: Discord IPC (Rich Presence), "Listening" status |
 | `src/platform/WindowsMediaControls.*`, `WinRtMedia.h` | Windows: SMTC (media flyout, lock screen) and media keys |
+| `src/platform/EarlyGraphics.*` | Windows: the window's Direct3D 11 device made while the app starts, its background before the first frame |
 | `src/platform/Mpris.*` | MPRIS 2 on Linux (D-Bus): media keys, system panel controls |
 | `src/platform/AndroidSupport.*` | Android: the storage permission, folder picker URIs |
 | `src/TagLibPath.h` | File path for TagLib (wchar_t on Windows, file system bytes on Linux) |
@@ -726,6 +749,7 @@ of every word (the word-by-word highlight):
 | `packaging/windows/` | The setup (`setup/`), the package it downloads (`make_payload.py`), the icon |
 | `packaging/android/` | Android manifest (permissions, `everplay://` links, background playback) and launcher icons |
 | `qml/onboarding/` | First-run wizard: steps, animated layout thumbnails (`LayoutPreview`), transition preview |
+| `qml/Main.qml` | The window alone, so it appears at once; `qml/Shell.qml` is everything in it, built after the first frame |
 | `qml/Theme.qml` | Palette, fonts, animation timings; the accent smoothly follows the cover |
 | `qml/Nav.qml` | Navigation (back/forward history), panel state, notifications |
 | `qml/Icons.qml` | Vector icons (SVG paths) |
