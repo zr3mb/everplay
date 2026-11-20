@@ -221,7 +221,9 @@ void SpotifyService::onWebFailed(const QString &reason)
 {
     qWarning().noquote() << "spotify: browser token failed:" << reason;
     if (!m_browserLogin) {
-        deliverToken(tr("Spotify session expired — sign in again (%1)").arg(reason));
+        // An invisible renewal: no window was opened, so the sign-in window the reason may mention isn't there.
+        deliverToken(m_webLogin.signedOut() ? tr("Spotify has signed Everplay out — sign in again on the Sources page")
+                                            : tr("Spotify session expired — sign in again (%1)").arg(reason));
         return;
     }
     m_browserLogin = false;
