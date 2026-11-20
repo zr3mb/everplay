@@ -99,6 +99,14 @@ void StreamResolver::detect()
         emit engineChanged();
         return;
     }
+    // The account cookies yt-dlp gets are in a file only while it runs. When Everplay was ended in the
+    // meantime (killed, a crash) the file stayed behind: it goes now, before anything runs.
+    if (m_running.isEmpty()) {
+        const QDir tools(toolsDir());
+        for (const QString &name : tools.entryList({ QStringLiteral("cookies-*.txt") }, QDir::Files))
+            QFile::remove(tools.filePath(name));
+    }
+
     const QStringList candidates = {
 #ifdef Q_OS_WIN
         toolsDir() + QStringLiteral("/yt-dlp/") + engineFileName(),
