@@ -1059,17 +1059,23 @@ QString coreTitle(const QString &title)
     return LyricsAligner::normalize(t);
 }
 
-// "Artist - Title (Official Video)" (video uploads) -> "Title (Official Video)"
-QString withoutArtistPrefix(const QString &title, const QString &artist)
+// "Artist - Title (Official Video)" (video uploads) -> "Title (Official Video)". The prefix may name any of
+// the track's artists ("A, B"): an upload by the main artist of a track that lists a featured one first.
+QString withoutArtistPrefix(const QString &title, const QString &artists)
 {
     static const QRegularExpression dash(QStringLiteral("\\s[-–—]\\s"));
     const auto m = dash.match(title);
-    if (!m.hasMatch() || artist.isEmpty())
+    if (!m.hasMatch())
         return title;
     const QString left = LyricsAligner::normalize(title.left(m.capturedStart()));
-    if (left.isEmpty() || !(left.contains(artist) || artist.contains(left)))
+    if (left.isEmpty())
         return title;
-    return title.mid(m.capturedEnd());
+    for (const QString &name : artists.split(QStringLiteral(", "), Qt::SkipEmptyParts)) {
+        const QString artist = LyricsAligner::normalize(name);
+        if (!artist.isEmpty() && (left.contains(artist) || artist.contains(left)))
+            return title.mid(m.capturedEnd());
+    }
+    return title;
 }
 
 // The kind of version a title names ("live", "remix", "cover", "spedup"…). Words that are rare in
@@ -1108,8 +1114,7 @@ QSet<QString> variantTags(const QString &title)
 double YtMusicApi::matchScore(const Track &local, const Track &result)
 {
     const QString artist = LyricsAligner::normalize(local.artist);
-    const QString resultTitle = withoutArtistPrefix(
-        result.title, LyricsAligner::normalize(local.artist.section(QStringLiteral(", "), 0, 0)));
+    const QString resultTitle = withoutArtistPrefix(result.title, local.artist);
     const double ts = LyricsAligner::similarity(coreTitle(local.title), coreTitle(resultTitle));
     if (ts < 0.6)
         return -1;

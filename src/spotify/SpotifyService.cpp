@@ -36,7 +36,7 @@ const char *kScopes = "playlist-read-private playlist-read-collaborative user-li
 QString tokenFile() { return AppPaths::dataDir() + QStringLiteral("/spotify.token"); }
 QString cacheFile() { return AppPaths::dataDir() + QStringLiteral("/spotify.json"); }
 QString matchesFile() { return AppPaths::dataDir() + QStringLiteral("/spotify-matches.json"); }
-constexpr int kMatchesVersion = 2;   // spotify-matches.json: "_version", "_manual" and "sp:<id>": videoId
+constexpr int kMatchesVersion = 3;   // spotify-matches.json: "_version", "_manual" and "sp:<id>": videoId
 QString browserProfile() { return AppPaths::dataDir() + QStringLiteral("/browser-spotify"); }
 
 QString randomString(int length)
@@ -1217,12 +1217,17 @@ void SpotifyService::loadCache()
         const QJsonObject root = QJsonDocument::fromJson(m.readAll()).object();
         // Matches from before version 2 were picked without telling songs from videos, covers or
         // remixes — they're looked up again with the better matching when the track plays.
-        if (root.value("_version").toInt() >= kMatchesVersion) {
+        // Version 2 also missed video uploads by the main artist of a track that lists a featured artist
+        // first: its "not found" entries are dropped, its matches stay.
+        const int version = root.value("_version").toInt();
+        if (version >= 2) {
             for (const QString &id : fromArray(root.value("_manual").toArray()))
                 m_manual.insert(id);
-            for (auto it = root.begin(); it != root.end(); ++it)
-                if (!it.key().startsWith(QLatin1Char('_')))
-                    m_matches.insert(it.key(), it.value().toString());
+            for (auto it = root.begin(); it != root.end(); ++it) {
+                const QString videoId = it.value().toString();
+                if (!it.key().startsWith(QLatin1Char('_')) && (version >= kMatchesVersion || !videoId.isEmpty()))
+                    m_matches.insert(it.key(), videoId);
+            }
         }
     }
 }
