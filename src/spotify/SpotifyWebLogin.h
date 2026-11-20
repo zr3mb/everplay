@@ -37,6 +37,8 @@ public:
     bool running() const { return m_stage != Stage::Idle; }
     bool interactive() const { return m_stage == Stage::Interactive || m_stage == Stage::Closing; }
     QString status() const;
+    // The last attempt found the profile signed out of Spotify (not a browser or network problem).
+    bool signedOut() const { return m_signedOut; }
     void start(const QString &profileDir);     // sign-in window, then the token
     void refresh(const QString &profileDir);   // only a new token from the signed-in profile
     void cancel();
@@ -83,6 +85,7 @@ private:
     QTimer m_fallback;
     QTimer m_settle;
     int m_portAttempts = 0;
+    bool m_signedOut = false;
     bool m_readerLaunched = false;   // the hidden browser of the readout has been started
     QStringList m_lastTitles;        // for the log: only changes are written
     QElapsedTimer m_launchClock;

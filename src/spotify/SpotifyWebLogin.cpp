@@ -107,6 +107,7 @@ bool SpotifyWebLogin::prepareProfile(const QString &profileDir)
         return false;
     }
     m_profileDir = profileDir;
+    m_signedOut = false;
     QDir().mkpath(profileDir);
     m_readerLaunched = false;
     m_lastTitles.clear();
@@ -472,6 +473,7 @@ void SpotifyWebLogin::onEvent(const QString &method, const QJsonObject &params)
             if (token.isEmpty())
                 return;   // maybe a later call — the timeout / fallback decide
             if (json.value("isAnonymous").toBool()) {
+                m_signedOut = true;
                 fail(tr("No Spotify sign-in detected — sign in in the window until you see the web player"));
                 return;
             }
