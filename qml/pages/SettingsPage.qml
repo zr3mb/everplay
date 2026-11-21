@@ -502,6 +502,20 @@ Item {
                     }
                 }
                 SettingRow {
+                    visible: GameOverlay.lyricsEnabled
+                    icon: "music"
+                    title: qsTr("Music notes")
+                    description: qsTr("Shows ♪ between lines and where the lyrics have them.")
+                    Toggle { checked: !GameOverlay.lyricsHideNotes; onToggled: c => GameOverlay.lyricsHideNotes = !c }
+                }
+                SettingRow {
+                    visible: GameOverlay.lyricsEnabled
+                    icon: "tune"
+                    title: qsTr("Punctuation")
+                    description: qsTr("Shows punctuation marks such as ? ! , . and dashes in the lyrics.")
+                    Toggle { checked: !GameOverlay.lyricsHidePunctuation; onToggled: c => GameOverlay.lyricsHidePunctuation = !c }
+                }
+                SettingRow {
                     visible: GameOverlay.lyricsEnabled && GameOverlay.hotkeyMode === "native"
                     icon: "key"
                     title: qsTr("Lyrics shortcut")
