@@ -1,6 +1,6 @@
 # Everplay — notes for Claude
 
-Music player in C++20 / Qt 6.8 (QML) with TagLib 2 and CMake. See `README.md` for the architecture and build steps.
+Music player in C++20 / Qt 6.8 (QML) with TagLib 2 and CMake. See `docs/DEVELOPMENT.md` for the architecture and build steps.
 
 ## Commit messages
 
