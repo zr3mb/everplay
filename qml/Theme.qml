@@ -20,7 +20,11 @@ Item {
                   accent: "#ff9d6e", accent2: "#a7335c", onAccent: "#1c0f0b", fixedAccent: false },
         cat: { name: "Cat", bg: "#110914", surface: "#1d1121", surfaceHi: "#2a172f",
                   text: "#fbeaf6", textDim: "#c9a3c2", textFaint: "#8a6a86",
-                  accent: "#ff7ad6", accent2: "#8a3fd0", onAccent: "#2a0a23", fixedAccent: true }
+                  accent: "#ff7ad6", accent2: "#8a3fd0", onAccent: "#2a0a23", fixedAccent: true },
+        // Near-black with a violet cast; buttons, sliders and highlights always purple.
+        abyss: { name: "Abyss", bg: "#030206", surface: "#0b0912", surfaceHi: "#15111f",
+                 text: "#f1ecfa", textDim: "#a299b6", textFaint: "#625a75",
+                 accent: "#a774ff", accent2: "#4c1d95", onAccent: "#0d0619", fixedAccent: true }
     })
     // Plugins add their own ("<plugin>/<theme>"); a missing colour comes from the Everplay theme.
     readonly property var themes: {
@@ -30,7 +34,7 @@ Item {
             all[id] = Object.assign({}, builtinThemes.everplay, { fixedAccent: true }, extra[id])
         return all
     }
-    readonly property var themeIds: ["everplay", "midnight", "sunset", "cat"].concat(Object.keys(Plugins.themes))
+    readonly property var themeIds: ["everplay", "midnight", "sunset", "abyss", "cat"].concat(Object.keys(Plugins.themes))
 
     // "nokturn": the default theme's id under the app's former name.
     property string themeId: Prefs.stringValue("ui/theme", "everplay").replace(/^nokturn$/, "everplay")
@@ -76,7 +80,8 @@ Item {
     // Selected pills (tabs, chips): filled with the accent.
     readonly property color selection: accent
     readonly property color onSelection: onAccent
-    readonly property color panelBorder: cat ? alpha(accent, 0.16) : Qt.rgba(1, 1, 1, 0.07)
+    readonly property bool abyss: themeId === "abyss"
+    readonly property color panelBorder: cat || abyss ? alpha(accent, abyss ? 0.12 : 0.16) : Qt.rgba(1, 1, 1, 0.07)
 
     // Corner style, remembered between launches: "rounded" or "semi". In "semi" panels, cards and
     // covers get crisper corners (about a third of the radius) while round controls (play buttons,
@@ -98,7 +103,7 @@ Item {
     readonly property real radiusXL: r(28)
     readonly property color glass: alpha(surface, 0.95)        // panels: nearly solid
     readonly property color glassHi: alpha(surfaceHi, 0.98)    // the player dock, menus
-    readonly property color hairline: Qt.rgba(1, 1, 1, 0.07)
+    readonly property color hairline: abyss ? alpha(accent, 0.1) : Qt.rgba(1, 1, 1, 0.07)
     readonly property color fill: alpha(text, 0.06)            // quiet controls at rest
     readonly property color fillHover: alpha(text, 0.1)
     readonly property real gap: 12                             // between the window's panels
