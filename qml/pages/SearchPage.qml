@@ -116,11 +116,48 @@ Item {
 
     // Rows are built at once (Repeater), so long result lists show in parts.
     property int shown: 40
-    onQueryChanged: { shown = 40; onlineShown = 40; soundcloudShown = 20; flacShown = 20; onlineTimer.restart(); rememberState() }
+    onQueryChanged: { recentTimer.restart(); shown = 40; onlineShown = 40; soundcloudShown = 20; flacShown = 20; onlineTimer.restart(); rememberState() }
     onFilterChanged: { shown = 40; onlineShown = 40; soundcloudShown = 20; flacShown = 20; onlineTimer.restart(); rememberState() }
     function rememberState() {
         if (Nav.page === "search")
             Nav.remember({ query: query, filter: filter })
+    }
+
+    // Recent searches, newest first. A search counts once typing has paused for a moment or Enter was pressed.
+    readonly property int recentLimit: 10
+    property var recent: {
+        try {
+            const list = JSON.parse(Prefs.stringValue("search/recent", "[]"))
+            return Array.isArray(list) ? list.filter(q => typeof q === "string" && q !== "") : []
+        } catch (e) {
+            return []
+        }
+    }
+    function saveRecent(list) {
+        recent = list
+        Prefs.setValue("search/recent", JSON.stringify(list))
+    }
+    function addRecent(text) {
+        const q = text.trim().replace(/\s+/g, " ")
+        if (q.length < 2)
+            return
+        const lower = q.toLowerCase()
+        // Deleting letters from the last search isn't a new search.
+        if (recent.length > 0 && recent[0].toLowerCase().startsWith(lower))
+            return
+        // The same search again, or one that grew out of an earlier one (typed further), moves to the front.
+        const rest = recent.filter(r => r.toLowerCase() !== lower && !lower.startsWith(r.toLowerCase()))
+        saveRecent([q].concat(rest).slice(0, recentLimit))
+    }
+    function removeRecent(index) {
+        const list = recent.slice()
+        list.splice(index, 1)
+        saveRecent(list)
+    }
+    Timer {
+        id: recentTimer
+        interval: 2000
+        onTriggered: page.addRecent(page.query)
     }
 
     Timer {
@@ -360,6 +397,7 @@ Item {
                     font.pixelSize: 16
                     placeholderText: qsTr("What do you want to listen to today?")
                     onTextChanged: page.query = text
+                    onAccepted: { recentTimer.stop(); page.addRecent(text) }
                     Keys.onEscapePressed: text = ""
                 }
 
@@ -717,6 +755,84 @@ Item {
 
         ColumnLayout {
             spacing: 18
+
+            SectionHeader {
+                visible: page.recent.length > 0
+                Layout.fillWidth: true
+                title: qsTr("Recent searches")
+                action: qsTr("Clear")
+                onActionClicked: page.saveRecent([])
+            }
+
+            Flow {
+                visible: page.recent.length > 0
+                Layout.fillWidth: true
+                Layout.bottomMargin: 10
+                spacing: 8
+
+                Repeater {
+                    model: page.recent
+                    Rectangle {
+                        id: chip
+                        required property string modelData
+                        required property int index
+                        implicitWidth: chipRow.implicitWidth + 24
+                        implicitHeight: 36
+                        radius: height / 2
+                        color: chipHover.hovered ? Theme.fillHover : Theme.fill
+                        border.width: 1
+                        border.color: Theme.hairline
+                        Behavior on color { ColorAnimation { duration: Theme.fast } }
+
+                        HoverHandler { id: chipHover; cursorShape: Qt.PointingHandCursor }
+                        TapHandler { onTapped: field.text = chip.modelData }
+
+                        Row {
+                            id: chipRow
+                            anchors.verticalCenter: parent.verticalCenter
+                            x: 12
+                            spacing: 8
+                            Icon {
+                                anchors.verticalCenter: parent.verticalCenter
+                                name: "clock"
+                                size: 16
+                                color: Theme.textDim
+                            }
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: chip.modelData
+                                color: Theme.text
+                                font.pixelSize: 13
+                                width: Math.min(implicitWidth, 260)
+                                elide: Text.ElideRight
+                            }
+                            Item {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 20; height: 20
+                                Rectangle {
+                                    anchors.fill: parent
+                                    radius: 10
+                                    color: removeMouse.containsMouse ? Theme.alpha(Theme.text, 0.12) : "transparent"
+                                }
+                                Icon {
+                                    anchors.centerIn: parent
+                                    name: "close"
+                                    size: 14
+                                    color: removeMouse.containsMouse ? Theme.text : Theme.textDim
+                                }
+                                // A MouseArea takes the click, so the chip under it doesn't search as well.
+                                MouseArea {
+                                    id: removeMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: page.removeRecent(chip.index)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
 
             SectionHeader {
                 Layout.fillWidth: true
