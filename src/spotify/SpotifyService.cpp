@@ -189,6 +189,10 @@ void SpotifyService::loginWithBrowser()
 {
     if (loggingIn())
         return;
+    // A hidden token renewal still running would keep the window from opening; the sign-in replaces it,
+    // and the requests waiting for its token get the one the sign-in brings.
+    if (m_webLogin.running())
+        m_webLogin.abort();
     m_browserLogin = true;
     emit loggingInChanged();
     m_webLogin.start(browserProfile());
@@ -211,6 +215,7 @@ void SpotifyService::onWebToken(const QString &token, const QDateTime &expiresUt
     m_web = true;
     m_refreshToken.clear();
     saveToken();
+    deliverToken({});
     emit loggingInChanged();
     emit accountChanged();
     emit notice(tr("Signed in to Spotify"), QStringLiteral("check"));
@@ -222,11 +227,12 @@ void SpotifyService::onWebFailed(const QString &reason)
     qWarning().noquote() << "spotify: browser token failed:" << reason;
     if (!m_browserLogin) {
         // An invisible renewal: no window was opened, so the sign-in window the reason may mention isn't there.
-        deliverToken(m_webLogin.signedOut() ? tr("Spotify has signed Everplay out — sign in again on the Sources page")
+        deliverToken(m_webLogin.signedOut() ? tr("Spotify has signed Everplay out — press Relog on the Sources page")
                                             : tr("Spotify session expired — sign in again (%1)").arg(reason));
         return;
     }
     m_browserLogin = false;
+    deliverToken(tr("Spotify session expired — sign in again (%1)").arg(reason));
     emit loggingInChanged();
     emit notice(tr("Couldn't sign in to Spotify: %1").arg(reason), QStringLiteral("close"));
 }

@@ -143,9 +143,10 @@ YouTubeService::YouTubeService(QObject *parent)
     connect(&m_login, &BrowserLogin::runningChanged, this, &YouTubeService::loggingInChanged);
     connect(&m_login, &BrowserLogin::statusChanged, this, &YouTubeService::loggingInChanged);
     connect(&m_login, &BrowserLogin::succeeded, this, [this](const YtCookies &cookies) {
-        useCookies(cookies, true);
+        useCookies(cookies, true, std::exchange(m_relogging, false));
     });
     connect(&m_login, &BrowserLogin::failed, this, [this](const QString &reason) {
+        m_relogging = false;
         emit notice(reason, QStringLiteral("close"));
     });
 
@@ -175,6 +176,16 @@ void YouTubeService::login()
     m_login.start(browserProfile());
 }
 
+void YouTubeService::relogin()
+{
+    if (m_login.running())
+        return;
+    m_relogging = connected();
+    login();
+    if (!m_login.running())
+        m_relogging = false;
+}
+
 void YouTubeService::cancelLogin()
 {
     m_login.cancel();
@@ -190,12 +201,17 @@ void YouTubeService::loginWithCookies(const QString &cookieHeader)
     useCookies(cookies, true);
 }
 
-void YouTubeService::useCookies(const YtCookies &cookies, bool fresh)
+void YouTubeService::useCookies(const YtCookies &cookies, bool fresh, bool keepIdentity)
 {
     m_cookies = cookies;
     m_api.setCookies(cookies);
     m_resolver.setCookies(cookies);
-    if (fresh) {
+    if (fresh && keepIdentity) {
+        // The same account signed in again: its channel choice and synced data stay.
+        if (!cookies.save(cookieFile()))
+            emit notice(tr("Couldn't save the session to disk"), QStringLiteral("close"));
+        emit notice(tr("Signed in to YouTube Music again"), QStringLiteral("check"));
+    } else if (fresh) {
         // A new session: start from its first account; the others can be picked once they're listed.
         m_authUser = 0;
         m_pageId.clear();

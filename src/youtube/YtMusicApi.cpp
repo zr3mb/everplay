@@ -289,7 +289,7 @@ void YtMusicApi::send(const Client &client, const QString &endpoint, QJsonObject
                 if (message.isEmpty())
                     message = errorString;
                 callback(json, status == 401 || status == 403
-                                   ? tr("Your YouTube session has expired — sign in again")
+                                   ? tr("Your YouTube session has expired — press Relog on the Sources page")
                                    : message);
                 return;
             }
