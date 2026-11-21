@@ -151,6 +151,7 @@ Item {
                 readonly property real fly: root.inCubic(root.seg(1.75 + index * 0.035, 2.55 + index * 0.035))
                 text: modelData
                 color: Qt.tint(root.oldAccent, Theme.alpha("#ffffff", root.bump(1.5, 1.8, 2.2) * 0.8))
+                font.family: Theme.fontLight
                 font.pixelSize: Math.round(84 * root.k)
                 font.weight: Font.Light
                 font.letterSpacing: 6 * root.k

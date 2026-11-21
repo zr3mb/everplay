@@ -132,11 +132,16 @@ Item {
     onWallpaperChanged: Prefs.setValue("ui/wallpaper", wallpaper)
     onWallpaperDimChanged: Prefs.setValue("ui/wallpaperDim", wallpaperDim)
 
-    // Windows: Segoe UI Variable; Linux/macOS: the system font (e.g. Cantarell, Noto Sans, Inter).
+    // Helvetica for all text (regular, Light and Bold); Arial stands in on Windows where Helvetica isn't
+    // installed, and other systems map the name to their own Helvetica-like face.
     readonly property bool windows: Qt.platform.os === "windows"
-    // Headings: Bahnschrift on Windows (a DIN-style face, part of the new identity); elsewhere the system font.
-    readonly property string fontDisplay: preset.fontDisplay || (windows ? "Bahnschrift" : Qt.application.font.family)
-    readonly property string fontText: preset.fontText || (windows ? "Segoe UI Variable Text" : Qt.application.font.family)
+    readonly property var installedFonts: Qt.fontFamilies()
+    readonly property string helvetica: !windows || installedFonts.indexOf("Helvetica") >= 0 ? "Helvetica" : "Arial"
+    readonly property string fontDisplay: preset.fontDisplay || helvetica
+    readonly property string fontText: preset.fontText || helvetica
+    // Thin, large text. "Helvetica Light" is often installed as a family of its own.
+    readonly property string fontLight: preset.fontLight
+                                        || (installedFonts.indexOf("Helvetica Light") >= 0 ? "Helvetica Light" : helvetica)
 
     // Interface motion: every transition's length goes through ms(), so one factor sets how quick the
     // app feels (looping ambient animations keep their own pace).
