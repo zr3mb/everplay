@@ -1568,6 +1568,7 @@ Item {
         { name: "T3-sunset", run: () => { Theme.themeId = "sunset"; Nav.navigate("home") } },
         { name: "T3b-abyss", run: () => { Theme.themeId = "abyss"; Nav.navigate("home") } },
         { name: "T3c-abyss-settings", run: () => Nav.navigate("settings") },
+        { name: "T3d-profile", run: () => { Nav.navigate("home"); Nav.openProfile() } },
         { name: "T4-cat", run: () => { Theme.themeId = "cat"; Nav.navigate("home") } },
         { name: "T5-cat-settings", run: () => Nav.navigate("settings") },
         { name: "T6-cat-library", run: () => Nav.navigate("library") },
