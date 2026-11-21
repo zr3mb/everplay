@@ -44,6 +44,7 @@ qt_add_qml_module(Everplay
         src/AppPaths.h
         src/TagLibPath.h
         src/Prefs.h             src/Prefs.cpp
+        src/Profile.h           src/Profile.cpp
         src/MemoryTrim.h        src/MemoryTrim.cpp
         src/TrackModel.h        src/TrackModel.cpp
         src/LibraryScanner.h    src/LibraryScanner.cpp
@@ -104,6 +105,8 @@ qt_add_qml_module(Everplay
         qml/components/MatchDialog.qml
         qml/components/PasswordDialog.qml
         qml/components/AccountDialog.qml
+        qml/components/ProfileAvatar.qml
+        qml/components/ProfilePopup.qml
         qml/components/PlaylistFolderDialog.qml
         qml/components/QueueDrawer.qml
         qml/components/RoomAddDialog.qml

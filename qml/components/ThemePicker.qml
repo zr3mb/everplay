@@ -3,10 +3,10 @@ import QtQuick.Layouts
 import Everplay
 
 // Theme cards (Settings): a miniature of each theme's colors; clicking one switches to it.
-// Themes from plugins follow the built-in ones, four to a row.
+// Themes from plugins follow the built-in ones, five to a row.
 GridLayout {
     id: root
-    columns: 4
+    columns: 5
     columnSpacing: 12
     rowSpacing: 12
 

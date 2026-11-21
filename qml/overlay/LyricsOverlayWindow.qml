@@ -84,7 +84,43 @@ Window {
         }
 
         function karaokeText(text, n) {
-            return "<font color=\"" + String(Theme.accent) + "\">" + escaped(text.slice(0, n)) + "</font>" + escaped(text.slice(n))
+            let sung = text.slice(0, n), rest = text.slice(n)
+            if (GameOverlay.lyricsHideNotes || GameOverlay.lyricsHidePunctuation) {
+                sung = filtered(sung).replace(/\s{2,}/g, " ").replace(/^\s+/, "")
+                rest = filtered(rest).replace(/\s{2,}/g, " ").replace(/\s+$/, "")
+                if (sung.endsWith(" ") && rest.startsWith(" "))
+                    rest = rest.slice(1)
+            }
+            return "<font color=\"" + String(Theme.accent) + "\">" + escaped(sung) + "</font>" + escaped(rest)
+        }
+
+        // What shows while nothing is sung; empty when music notes are turned off (Settings).
+        readonly property string pause: GameOverlay.lyricsHideNotes ? "" : "♪ ♪ ♪"
+
+        function isLetter(c) {
+            return c !== undefined && c.toLowerCase() !== c.toUpperCase()
+        }
+
+        // Removes music notes and/or punctuation, as chosen in Settings. Spaces are kept as they are,
+        // so the two halves of a karaoke line join up again.
+        function filtered(text) {
+            let t = text || ""
+            if (GameOverlay.lyricsHideNotes)
+                t = t.replace(/[♩-♬]|\uD83C[\uDFB5\uDFB6\uDFBC]/g, "")
+            if (GameOverlay.lyricsHidePunctuation) {
+                t = t.replace(/[.,!?¿¡;:…"“”„«»‹›()\[\]{}*_~\/\\|<>#]/g, "")
+                     .replace(/[-‐‒–—]/g, " ")
+                     // Apostrophes stay inside words ("don't") and go elsewhere.
+                     .replace(/['‘’`´]/g, (m, i, all) => isLetter(all[i - 1]) && isLetter(all[i + 1]) ? m : "")
+            }
+            return t
+        }
+
+        // A whole line: filtered, with the gaps left behind closed up.
+        function shown(text) {
+            if (!GameOverlay.lyricsHideNotes && !GameOverlay.lyricsHidePunctuation)
+                return text || ""
+            return filtered(text).replace(/\s{2,}/g, " ").trim()
         }
 
         // Parse lines into verse sections (split on empty lines, or chunks of 4)
@@ -240,8 +276,8 @@ Window {
                     Text {
                         Layout.fillWidth: true
                         horizontalAlignment: Text.AlignHCenter
-                        visible: hud.current > 0 && hud.current - 1 < Lyrics.lines.length && Lyrics.lines[hud.current - 1].text !== ""
-                        text: visible ? Lyrics.lines[hud.current - 1].text : ""
+                        visible: text !== ""
+                        text: hud.current > 0 && hud.current - 1 < Lyrics.lines.length ? hud.shown(Lyrics.lines[hud.current - 1].text) : ""
                         color: Theme.alpha(Theme.text, 0.42)
                         font.family: Theme.fontDisplay
                         font.pixelSize: 20 * hud.s
@@ -260,10 +296,10 @@ Window {
                         readonly property bool isKaraoke: Lyrics.karaoke && hud.currentActive && hasWords
                         text: {
                             if (!hud.currentLine)
-                                return Lyrics.synced ? "♪ ♪ ♪" : (Lyrics.lines[0] ? Lyrics.lines[0].text : "")
-                            if (isKaraoke)
+                                return Lyrics.synced ? hud.pause : (Lyrics.lines[0] ? hud.shown(Lyrics.lines[0].text) : "")
+                            if (isKaraoke && hud.shown(hud.currentLine.text) !== "")
                                 return hud.karaokeText(hud.currentLine.text, hud.sungChars(hud.currentLine, hud.lyricsTime))
-                            return hud.currentLine.text || "♪ ♪ ♪"
+                            return hud.shown(hud.currentLine.text) || hud.pause
                         }
                         textFormat: isKaraoke ? Text.StyledText : Text.PlainText
                         color: hud.currentActive ? Theme.text : Theme.alpha(Theme.text, 0.75)
@@ -281,8 +317,8 @@ Window {
                     Text {
                         Layout.fillWidth: true
                         horizontalAlignment: Text.AlignHCenter
-                        visible: hud.current >= 0 && hud.current + 1 < Lyrics.lines.length && Lyrics.lines[hud.current + 1].text !== ""
-                        text: visible ? Lyrics.lines[hud.current + 1].text : ""
+                        visible: text !== ""
+                        text: hud.current >= 0 && hud.current + 1 < Lyrics.lines.length ? hud.shown(Lyrics.lines[hud.current + 1].text) : ""
                         color: Theme.alpha(Theme.text, 0.58)
                         font.family: Theme.fontDisplay
                         font.pixelSize: 22 * hud.s
@@ -309,7 +345,7 @@ Window {
                             required property int index
                             Layout.fillWidth: true
                             readonly property bool isCurrent: modelData.index === hud.current
-                            text: modelData.line.text || ""
+                            text: hud.shown(modelData.line.text)
                             horizontalAlignment: Text.AlignHCenter
                             color: isCurrent ? (hud.currentActive ? Theme.text : Theme.alpha(Theme.text, 0.85)) : Theme.alpha(Theme.text, 0.50)
                             font.family: Theme.fontDisplay
@@ -336,8 +372,8 @@ Window {
                         id: adhdWordText
                         Layout.fillWidth: true
                         horizontalAlignment: Text.AlignHCenter
-                        readonly property string word: hud.activeAdhdWord
-                        text: word !== "" ? word : (Player.playing && Lyrics.synced ? "♪ ♪ ♪" : "")
+                        readonly property string word: hud.shown(hud.activeAdhdWord)
+                        text: word !== "" ? word : (Player.playing && Lyrics.synced ? hud.pause : "")
                         color: word !== "" ? Theme.text : Theme.alpha(Theme.text, 0.45)
                         font.family: Theme.fontDisplay
                         font.pixelSize: (word !== "" ? 46 : 28) * hud.s

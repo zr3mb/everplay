@@ -313,7 +313,7 @@ Window {
                 anchors.right: parent.right
                 text: Qt.formatTime(clock.now, "HH:mm")
                 color: Theme.text
-                font.family: Theme.fontDisplay
+                font.family: Theme.fontLight
                 font.pixelSize: 34 * menu.s
                 font.weight: Font.Light
             }

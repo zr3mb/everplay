@@ -303,7 +303,7 @@ Item {
 
                         // Signed in
                         RowLayout {
-                            visible: YouTube.connected
+                            visible: YouTube.connected && !YouTube.loggingIn
                             Layout.fillWidth: true
                             spacing: 12
 
@@ -354,6 +354,13 @@ Item {
                                 iconSize: 18
                                 showDot: false
                                 onClicked: YouTube.refresh()
+                            }
+                            PillButton {
+                                kind: "ghost"
+                                icon: "person"
+                                text: qsTr("Relog")
+                                enabled: YouTube.browserName !== ""
+                                onClicked: YouTube.relogin()
                             }
                             PillButton {
                                 kind: "ghost"
@@ -582,7 +589,7 @@ Item {
 
                         // Signed in
                         RowLayout {
-                            visible: Spotify.connected
+                            visible: Spotify.connected && !Spotify.loggingIn
                             Layout.fillWidth: true
                             spacing: 12
 
@@ -619,6 +626,13 @@ Item {
                                 iconSize: 18
                                 showDot: false
                                 onClicked: Spotify.refresh()
+                            }
+                            PillButton {
+                                kind: "ghost"
+                                icon: "person"
+                                text: qsTr("Relog")
+                                enabled: YouTube.browserName !== ""
+                                onClicked: Spotify.loginWithBrowser()
                             }
                             PillButton {
                                 kind: "ghost"

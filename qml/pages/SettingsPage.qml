@@ -165,6 +165,12 @@ Item {
                     Toggle { checked: Theme.ambient; onToggled: c => Theme.ambient = c }
                 }
                 SettingRow {
+                    icon: "expand"
+                    title: qsTr("Blurred cover in full screen")
+                    description: qsTr("In full screen, the background becomes a blurred copy of the cover of the track that's playing.")
+                    Toggle { checked: Theme.immersiveCover; onToggled: c => Theme.immersiveCover = c }
+                }
+                SettingRow {
                     icon: "menuOpen"
                     title: qsTr("Compact sidebar")
                     description: qsTr("Show only icons in the sidebar.")
@@ -500,6 +506,20 @@ Item {
                             ? ["bottom", "center", "top"].indexOf(GameOverlay.lyricsPosition) : 0
                         onActivated: i => GameOverlay.lyricsPosition = ["bottom", "center", "top"][i]
                     }
+                }
+                SettingRow {
+                    visible: GameOverlay.lyricsEnabled
+                    icon: "music"
+                    title: qsTr("Music notes")
+                    description: qsTr("Shows ♪ between lines and where the lyrics have them.")
+                    Toggle { checked: !GameOverlay.lyricsHideNotes; onToggled: c => GameOverlay.lyricsHideNotes = !c }
+                }
+                SettingRow {
+                    visible: GameOverlay.lyricsEnabled
+                    icon: "tune"
+                    title: qsTr("Punctuation")
+                    description: qsTr("Shows punctuation marks such as ? ! , . and dashes in the lyrics.")
+                    Toggle { checked: !GameOverlay.lyricsHidePunctuation; onToggled: c => GameOverlay.lyricsHidePunctuation = !c }
                 }
                 SettingRow {
                     visible: GameOverlay.lyricsEnabled && GameOverlay.hotkeyMode === "native"
