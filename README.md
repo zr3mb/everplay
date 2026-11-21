@@ -12,6 +12,7 @@
   <a href="https://github.com/zr3mb/everplay/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/zr3mb/everplay?label=release&color=e07ab0"></a>
   <a href="https://github.com/zr3mb/everplay/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/zr3mb/everplay/total?color=9a6ad8"></a>
   <img alt="Platforms" src="https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20Android%20%7C%20web-5cc8ff">
+  <a href="LICENSE"><img alt="License: GPL-3.0" src="https://img.shields.io/badge/license-GPL--3.0-8fb996"></a>
   <a href="https://github.com/zr3mb/everplay/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/zr3mb/everplay?style=flat&color=ffb36b"></a>
 </p>
 
@@ -115,6 +116,11 @@ see the [developer guide](docs/DEVELOPMENT.md); it also explains how each featur
 (wallpapers, themes, overlays) are plain QML: see [writing a plugin](docs/plugins.md).
 
 If Everplay is useful to you, **a star on GitHub** helps other people find it.
+
+## License
+
+Everplay is free software under the [GNU General Public License v3.0](LICENSE): you may use, study, share
+and change it, and versions you distribute stay under the same license.
 
 ---
 
