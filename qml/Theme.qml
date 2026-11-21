@@ -113,6 +113,9 @@ Item {
     property bool ambient: Prefs.boolValue("ui/ambient", true)
     onDynamicAccentChanged: Prefs.setValue("ui/dynamicAccent", dynamicAccent)
     onAmbientChanged: Prefs.setValue("ui/ambient", ambient)
+    // Full screen: the current track's cover, blurred, fills the background (ImmersiveView).
+    property bool immersiveCover: Prefs.boolValue("ui/immersiveCover", false)
+    onImmersiveCoverChanged: Prefs.setValue("ui/immersiveCover", immersiveCover)
     readonly property color staticAccent: preset.accent
     readonly property color staticAccent2: preset.accent2
     readonly property bool followsCover: dynamicAccent && !preset.fixedAccent

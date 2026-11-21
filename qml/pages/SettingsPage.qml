@@ -165,6 +165,12 @@ Item {
                     Toggle { checked: Theme.ambient; onToggled: c => Theme.ambient = c }
                 }
                 SettingRow {
+                    icon: "expand"
+                    title: qsTr("Blurred cover in full screen")
+                    description: qsTr("In full screen, the background becomes a blurred copy of the cover of the track that's playing.")
+                    Toggle { checked: Theme.immersiveCover; onToggled: c => Theme.immersiveCover = c }
+                }
+                SettingRow {
                     icon: "menuOpen"
                     title: qsTr("Compact sidebar")
                     description: qsTr("Show only icons in the sidebar.")
