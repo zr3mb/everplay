@@ -45,6 +45,13 @@ CREATE TABLE IF NOT EXISTS playlist_members (
     PRIMARY KEY (playlist_id, user_id)
 );
 CREATE INDEX IF NOT EXISTS playlist_members_user ON playlist_members(user_id);
+-- The picture on a person's profile, shown to the people in their rooms and shared playlists.
+CREATE TABLE IF NOT EXISTS user_avatars (
+    user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    image BLOB NOT NULL,
+    type TEXT NOT NULL,
+    updated INTEGER NOT NULL
+);
 -- A picture a member chose for a shared playlist: everyone in it sees the same cover.
 CREATE TABLE IF NOT EXISTS playlist_covers (
     playlist_id TEXT PRIMARY KEY REFERENCES playlists(id) ON DELETE CASCADE,
@@ -232,7 +239,7 @@ class Database:
                 token = self._new_token(user_id, device)
         except sqlite3.IntegrityError:
             raise LoginTaken(login)
-        return {"id": user_id, "name": name, "login": login}, token
+        return {"id": user_id, "name": name, "login": login, "avatar": 0}, token
 
     def _new_token(self, user_id, device=""):
         token = secrets.token_urlsafe(32)
@@ -244,8 +251,9 @@ class Database:
     def session(self, token, device=None):
         """(the account, the id of this device) for a device's token, or (None, None). A device that says what
         it is (device) gets that name in the account's list of devices."""
-        row = self.conn.execute("SELECT u.id, u.name, u.login, u.seen, t.id AS device_id, t.device, t.seen AS device_seen "
-                                "FROM tokens t JOIN users u ON u.id = t.user_id WHERE t.token_hash = ?",
+        row = self.conn.execute("SELECT u.id, u.name, u.login, u.seen, t.id AS device_id, t.device, t.seen AS device_seen, "
+                                "COALESCE(a.updated, 0) AS avatar FROM tokens t JOIN users u ON u.id = t.user_id "
+                                "LEFT JOIN user_avatars a ON a.user_id = u.id WHERE t.token_hash = ?",
                                 (hash_token(token),)).fetchone()
         if not row:
             return None, None
@@ -255,7 +263,7 @@ class Database:
         device = clean_device(device) if device else row["device"]
         if t - row["device_seen"] > 3600_000 or device != row["device"]:
             self.conn.execute("UPDATE tokens SET seen = ?, device = ? WHERE id = ?", (t, device, row["device_id"]))
-        return {"id": row["id"], "name": row["name"], "login": row["login"]}, row["device_id"]
+        return {"id": row["id"], "name": row["name"], "login": row["login"], "avatar": row["avatar"]}, row["device_id"]
 
     def user_by_token(self, token):
         return self.session(token)[0]
@@ -450,6 +458,43 @@ class Database:
         marks = ",".join("?" * len(ids))
         return {r["id"]: r["name"] for r in self.conn.execute(f"SELECT id, name FROM users WHERE id IN ({marks})", ids)}
 
+    # ---- profile pictures ---------------------------------------------------
+
+    def avatar_versions(self, ids):
+        """{user id: the version of their picture} for those who have one."""
+        ids = list(set(ids))
+        if not ids:
+            return {}
+        marks = ",".join("?" * len(ids))
+        return {r["user_id"]: r["updated"] for r in self.conn.execute(
+            f"SELECT user_id, updated FROM user_avatars WHERE user_id IN ({marks})", ids)}
+
+    def avatar(self, user_id):
+        return self.conn.execute("SELECT image, type, updated FROM user_avatars WHERE user_id = ?", (user_id,)).fetchone()
+
+    def set_avatar(self, user_id, image, kind=""):
+        """The user's picture (None removes it); returns its version, 0 without one."""
+        with self._tx():
+            if image is None:
+                self.conn.execute("DELETE FROM user_avatars WHERE user_id = ?", (user_id,))
+                return 0
+            # strictly newer than the last one: the version is part of the picture's address
+            previous = self.avatar_versions([user_id]).get(user_id, 0)
+            updated = max(now_ms(), previous + 1)
+            self.conn.execute("INSERT INTO user_avatars (user_id, image, type, updated) VALUES (?, ?, ?, ?) "
+                              "ON CONFLICT(user_id) DO UPDATE SET image = excluded.image, type = excluded.type, "
+                              "updated = excluded.updated", (user_id, image, kind, updated))
+            return updated
+
+    def touch_playlists_of(self, user_id):
+        """A member's name or picture changed: their playlists get a new version, so the others fetch them."""
+        with self._tx():
+            ids = [r["playlist_id"] for r in self.conn.execute(
+                "SELECT playlist_id FROM playlist_members WHERE user_id = ?", (user_id,))]
+            for playlist_id in ids:
+                self._touch(playlist_id)
+        return ids
+
     # ---- shared tracks ------------------------------------------------------
 
     def create_share(self, user_id, track):
@@ -535,14 +580,15 @@ class Database:
                       for r in self.conn.execute("SELECT * FROM playlist_tracks WHERE playlist_id = ? ORDER BY position",
                                                  (playlist_id,))]
         names = self.user_names(member_ids + [p["owner_id"]] + [t["addedBy"] for t in tracks])
+        avatars = self.avatar_versions(member_ids + [p["owner_id"]])
         for t in tracks:
             t["addedByName"] = names.get(t["addedBy"], "")
         count = len(tracks) if with_tracks else self.conn.execute(
             "SELECT COUNT(*) FROM playlist_tracks WHERE playlist_id = ?", (playlist_id,)).fetchone()[0]
         out = {
             "id": p["id"], "name": p["name"], "description": p["description"],
-            "owner": {"id": p["owner_id"], "name": names.get(p["owner_id"], "")},
-            "members": [{"id": m, "name": names.get(m, "")} for m in member_ids],
+            "owner": {"id": p["owner_id"], "name": names.get(p["owner_id"], ""), "avatar": avatars.get(p["owner_id"], 0)},
+            "members": [{"id": m, "name": names.get(m, ""), "avatar": avatars.get(m, 0)} for m in member_ids],
             "version": p["version"], "created": p["created"], "updated": p["updated"], "count": count,
             "origin": p["origin"], "protected": bool(p["password"]),
             "coverVersion": self.cover_version(playlist_id),

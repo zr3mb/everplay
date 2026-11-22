@@ -1560,6 +1560,19 @@ Item {
             { name: "S8-settings", run: () => Nav.navigate("settings") }
         ]
     }
+    // Profile name and picture in a listening room (--tour-profile, with EVERPLAY_SERVER and a profile that has
+    // a name and a picture): makes a room, shows its members, then renames the profile.
+    readonly property bool withProfile: Qt.application.arguments.indexOf("--tour-profile") >= 0
+    readonly property var profileSteps: [
+        { name: "F1-room", run: () => { Nav.finishOnboarding(); Player.muted = true; Online.createRoom("Profile test", "open") } },
+        { name: "F2-wait", run: () => console.log("tour: registered", Online.registered, "room", Online.room.code) },
+        { name: "F3-page", run: () => { Nav.navigate("room"); console.log("tour: members", JSON.stringify(Online.room.members)) } },
+        { name: "F4-wait", run: () => {} },
+        { name: "F5-rename", run: () => { Profile.name = Profile.name + " 2"; console.log("tour: renamed to", Profile.name, "| online", Online.displayName) } },
+        { name: "F6-renamed", run: () => console.log("tour: members", JSON.stringify(Online.room.members)) },
+        { name: "F7-wait", run: () => {} },
+        { name: "F8-leave", run: () => console.log("tour: members", JSON.stringify(Online.room.members)) }
+    ]
     readonly property bool withThemes: Qt.application.arguments.indexOf("--tour-themes") >= 0
     // Every theme on the home page, then the Cat theme across the main screens.
     readonly property var themeSteps: [
@@ -1575,7 +1588,7 @@ Item {
         { name: "T7-cat-compact", run: () => { Nav.sidebarCompact = true; Nav.queueOpen = false; Nav.navigate("home") } },
         { name: "T8-back", run: () => { Nav.sidebarCompact = false; Nav.queueOpen = true; Theme.themeId = "everplay" } }
     ]
-    readonly property var steps: withShowcase ? showcaseSteps : withIntro ? introSteps : withRedesign ? redesignSteps : withPlugins ? pluginSteps : withDesign ? designSteps : withAhead ? aheadSteps : withCache ? cacheSteps : withSmall ? smallSteps : withSharedCover ? sharedCoverSteps : withQueue ? queueSteps : withRoomAdd ? roomAddSteps : withAccount ? accountSteps : withTrackOrder ? trackOrderSteps : withOrder ? orderSteps : withFolders ? folderSteps : withResize ? resizeSteps : withPassword ? passwordSteps : withMirrors ? mirrorSteps : withLibrarySync ? librarySyncSteps : withOnline ? onlineSteps : withListen ? listenSteps : withAudioDevice ? audioDeviceSteps : withFlac ? flacSteps : withScProfile ? scProfileSteps : withDiscover ? discoverSteps : withScroll ? scrollSteps : withBlur ? blurSteps : withSpotifyArtist ? spotifyArtistSteps : withSources ? sourceSteps : withArtistSongs ? artistSongSteps : withAlign ? alignSteps : withScSeekLiked ? scSeekLikedSteps : withFakeTiming ? fakeTimingSteps : withScSeek ? scSeekSteps : withSearchTitle ? searchTitleSteps : withKaraoke ? karaokeSteps : withScLogin ? scLoginSteps : withSoundCloud ? soundcloudSteps : withRecognize ? recognizeSteps : withThemes ? themeSteps : withStats ? statsSteps : withSearchPlaylists ? searchPlaylistSteps : withOverlayCycle ? overlayCycleSteps : withHotkey ? hotkeySteps : withOverlay ? overlaySteps : withLiked ? likedSteps : withArtist ? artistSteps : withHome ? homeSteps : withLyrics ? lyricSteps : withPlaylists ? playlistSteps : withAlbums ? albumSteps : withSeek ? seekSteps : withPerf ? perfSteps : withCovers ? coverSteps : withMatch ? matchSteps : withEq ? eqSteps : withBig ? bigSteps : withEngine ? engineSteps : withLogin ? loginSteps : baseSteps
+    readonly property var steps: withProfile ? profileSteps : withShowcase ? showcaseSteps : withIntro ? introSteps : withRedesign ? redesignSteps : withPlugins ? pluginSteps : withDesign ? designSteps : withAhead ? aheadSteps : withCache ? cacheSteps : withSmall ? smallSteps : withSharedCover ? sharedCoverSteps : withQueue ? queueSteps : withRoomAdd ? roomAddSteps : withAccount ? accountSteps : withTrackOrder ? trackOrderSteps : withOrder ? orderSteps : withFolders ? folderSteps : withResize ? resizeSteps : withPassword ? passwordSteps : withMirrors ? mirrorSteps : withLibrarySync ? librarySyncSteps : withOnline ? onlineSteps : withListen ? listenSteps : withAudioDevice ? audioDeviceSteps : withFlac ? flacSteps : withScProfile ? scProfileSteps : withDiscover ? discoverSteps : withScroll ? scrollSteps : withBlur ? blurSteps : withSpotifyArtist ? spotifyArtistSteps : withSources ? sourceSteps : withArtistSongs ? artistSongSteps : withAlign ? alignSteps : withScSeekLiked ? scSeekLikedSteps : withFakeTiming ? fakeTimingSteps : withScSeek ? scSeekSteps : withSearchTitle ? searchTitleSteps : withKaraoke ? karaokeSteps : withScLogin ? scLoginSteps : withSoundCloud ? soundcloudSteps : withRecognize ? recognizeSteps : withThemes ? themeSteps : withStats ? statsSteps : withSearchPlaylists ? searchPlaylistSteps : withOverlayCycle ? overlayCycleSteps : withHotkey ? hotkeySteps : withOverlay ? overlaySteps : withLiked ? likedSteps : withArtist ? artistSteps : withHome ? homeSteps : withLyrics ? lyricSteps : withPlaylists ? playlistSteps : withAlbums ? albumSteps : withSeek ? seekSteps : withPerf ? perfSteps : withCovers ? coverSteps : withMatch ? matchSteps : withEq ? eqSteps : withBig ? bigSteps : withEngine ? engineSteps : withLogin ? loginSteps : baseSteps
     property double navStart: 0
     property bool measuring: false
     readonly property var bigSteps: [

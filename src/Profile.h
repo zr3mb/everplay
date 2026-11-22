@@ -7,8 +7,9 @@
 class QQmlEngine;
 class QJSEngine;
 
-// The user's own profile on this device: a name, a picture and a short bio. Kept locally for now
-// (settings.ini and the data folder); nothing of it leaves the computer.
+// The user's own profile on this device: a name, a picture and a short bio, kept in settings.ini and the data
+// folder. With an online account the name and the picture also go to the server (OnlineService::syncProfile),
+// where the people in your rooms and shared playlists see them; the bio stays here.
 class Profile : public QObject
 {
     Q_OBJECT

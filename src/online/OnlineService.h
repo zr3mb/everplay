@@ -272,6 +272,7 @@ private:
     void libraryVersion(const QJsonObject &reply);
     void saveToken() const;
     void scheduleMirrors();
+    void syncProfile();   // the profile's name and picture to the account
     void syncMirrors();
     void pushMirror(const QString &origin, const QString &name, const QList<Track> &tracks, const QString &signature);
     void matchNext();
@@ -298,6 +299,7 @@ private:
     QVariantList m_devices;
     int m_busy = 0;
     bool m_registering = false;
+    bool m_avatarBusy = false;       // a profile picture is on its way to the server
     QList<std::function<void(bool)>> m_waitingForAccount;
 
     qint64 m_clockOffset = 0;        // server time - local time (ms)

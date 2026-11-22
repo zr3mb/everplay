@@ -47,7 +47,7 @@ class Room:
         self.name = name
         self.mode = mode
         self.host_id = host_id
-        self.members = {}          # user id -> {"id", "name", "joined", "online", "left_at"}
+        self.members = {}          # user id -> {"id", "name", "avatar", "joined", "online", "left_at"}
         self.queue = []            # [{"itemId", "track", "addedBy"}]
         self.current = -1          # index into queue, -1 = nothing yet
         self.playing = False
@@ -64,10 +64,11 @@ class Room:
         if m:
             m["online"] += 1
             m["name"] = user["name"]
+            m["avatar"] = user.get("avatar", 0)
             m["left_at"] = None
         else:
-            self.members[user["id"]] = {"id": user["id"], "name": user["name"], "joined": time.monotonic(),
-                                        "online": 1, "left_at": None}
+            self.members[user["id"]] = {"id": user["id"], "name": user["name"], "avatar": user.get("avatar", 0),
+                                        "joined": time.monotonic(), "online": 1, "left_at": None}
             if self.host_id not in self.members:
                 self.host_id = user["id"]
         self.empty_since = None
@@ -340,6 +341,16 @@ class Room:
         self.host_id = new_host
         self.revision += 1
 
+    def update_member(self, user):
+        """A member changed their name or picture. False when they aren't in this room."""
+        m = self.members.get(user["id"])
+        if not m:
+            return False
+        m["name"] = user["name"]
+        m["avatar"] = user.get("avatar", 0)
+        self.revision += 1
+        return True
+
     def rename(self, user_id, name):
         self._require_host(user_id)
         self.name = name
@@ -361,7 +372,8 @@ class Room:
             "name": self.name,
             "mode": self.mode,
             "hostId": self.host_id,
-            "members": [{"id": m["id"], "name": m["name"], "online": m["online"] > 0} for m in members],
+            "members": [{"id": m["id"], "name": m["name"], "avatar": m.get("avatar", 0), "online": m["online"] > 0}
+                        for m in members],
             "queue": [{"itemId": i["itemId"], "track": i["track"], "addedBy": i["addedBy"],
                        "addedByName": names.get(i["addedBy"]) or self._member_name(i["addedBy"])}
                       for i in self.queue],

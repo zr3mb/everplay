@@ -168,7 +168,7 @@ Popup {
 
         Text {
             Layout.fillWidth: true
-            text: qsTr("Your profile is kept on this computer only.")
+            text: qsTr("Your name and picture are shown to the people in your listening rooms and shared playlists. The bio stays on this computer.")
             color: Theme.textFaint
             font.pixelSize: 11
             wrapMode: Text.WordWrap

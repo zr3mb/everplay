@@ -437,10 +437,20 @@ Item {
                                     color: Theme.alpha(Theme.accent, memberRow.modelData.me ? 0.3 : 0.14)
                                     Text {
                                         anchors.centerIn: parent
+                                        visible: !memberPhoto.hasPicture
                                         text: (memberRow.modelData.name || "?").charAt(0).toUpperCase()
                                         color: Theme.text
                                         font.pixelSize: 14
                                         font.weight: Font.DemiBold
+                                    }
+                                    // Their profile picture, when they have one.
+                                    ArtCover {
+                                        id: memberPhoto
+                                        anchors.fill: parent
+                                        visible: hasPicture
+                                        radius: width / 2
+                                        decorated: false
+                                        source: memberRow.modelData.avatar || ""
                                     }
                                 }
                                 Text {
