@@ -145,6 +145,6 @@ Item {
     Shortcut { sequence: "Ctrl+K"; onActivated: Nav.openSearch() }
     Connections {
         target: Nav
-        function onProfileRequested() { profilePopup.open() }
+        function onProfileRequested() { if (!Nav.mobile) profilePopup.open() }   // the phone layout has its own
     }
 }

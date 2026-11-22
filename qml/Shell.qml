@@ -307,6 +307,18 @@ Item {
         enabled: !win.maximized && !win.mobile
     }
 
+    // Phone layout: the profile box in the middle of the screen (there's no title bar to hang it under).
+    ProfilePopup {
+        id: phoneProfile
+        anchors.centerIn: Overlay.overlay
+        width: Math.min(340, (Overlay.overlay ? Overlay.overlay.width : 380) - 32)
+    }
+    Connections {
+        target: Nav
+        enabled: win.mobile
+        function onProfileRequested() { phoneProfile.open() }
+    }
+
     // Phone layout: the pages that have no place in the bottom bar.
     Drawer {
         id: moreSheet
@@ -331,6 +343,7 @@ Item {
             Item { width: 1; height: 10 }
             Repeater {
                 model: [
+                    { key: "profile", label: qsTr("Profile"), icon: "person" },
                     { key: "sources", label: qsTr("Sources"), icon: "sources" },
                     { key: "equalizer", label: qsTr("Equalizer"), icon: "equalizer" },
                     { key: "stats", label: qsTr("Stats"), icon: "chart" },
@@ -366,7 +379,13 @@ Item {
                     MouseArea {
                         id: entryMouse
                         anchors.fill: parent
-                        onClicked: { moreSheet.close(); Nav.navigate(entry.modelData.key) }
+                        onClicked: {
+                            moreSheet.close()
+                            if (entry.modelData.key === "profile")
+                                Nav.openProfile()
+                            else
+                                Nav.navigate(entry.modelData.key)
+                        }
                     }
                 }
             }
