@@ -53,6 +53,7 @@ QtObject {
 
     signal pageRequested(string page, var args)
     signal searchFocusRequested()
+    signal profileRequested()   // the profile box under the title bar's avatar
     signal toastRequested(string text, string icon)
     signal addFolderRequested()
     signal matchPickerRequested(var track)
@@ -130,6 +131,10 @@ QtObject {
     function openSearch() {
         navigate("search")
         searchFocusRequested()
+    }
+
+    function openProfile() {
+        profileRequested()
     }
 
     // Artist profile. With a YouTube Music channel id the page loads it directly; with a name only

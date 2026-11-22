@@ -318,6 +318,8 @@ GameOverlay::GameOverlay(QObject *parent)
     if (m_lyricsMode != QLatin1String("karaoke") && m_lyricsMode != QLatin1String("sections") && m_lyricsMode != QLatin1String("adhd"))
         m_lyricsMode = QStringLiteral("karaoke");
     m_lyricsPosition = settings->value("overlay/lyricsPosition", QStringLiteral("bottom")).toString();
+    m_lyricsHideNotes = settings->value("overlay/lyricsHideNotes", false).toBool();
+    m_lyricsHidePunctuation = settings->value("overlay/lyricsHidePunctuation", false).toBool();
     const QKeySequence lseq = QKeySequence::fromString(settings->value("overlay/lyricsHotkey").toString(), QKeySequence::PortableText);
     if (!lseq.isEmpty()) {
         m_lyricsKey = lseq[0].key();
@@ -539,6 +541,24 @@ void GameOverlay::setLyricsPosition(const QString &position)
     emit settingsChanged();
 }
 
+void GameOverlay::setLyricsHideNotes(bool on)
+{
+    if (on == m_lyricsHideNotes)
+        return;
+    m_lyricsHideNotes = on;
+    saveSettings();
+    emit settingsChanged();
+}
+
+void GameOverlay::setLyricsHidePunctuation(bool on)
+{
+    if (on == m_lyricsHidePunctuation)
+        return;
+    m_lyricsHidePunctuation = on;
+    saveSettings();
+    emit settingsChanged();
+}
+
 bool GameOverlay::setHotkey(int key, int modifiers)
 {
     modifiers &= int(Qt::ControlModifier | Qt::ShiftModifier | Qt::AltModifier | Qt::MetaModifier);
@@ -596,6 +616,8 @@ void GameOverlay::saveSettings()
     settings->setValue("overlay/lyricsDimming", m_lyricsDimming);
     settings->setValue("overlay/lyricsMode", m_lyricsMode);
     settings->setValue("overlay/lyricsPosition", m_lyricsPosition);
+    settings->setValue("overlay/lyricsHideNotes", m_lyricsHideNotes);
+    settings->setValue("overlay/lyricsHidePunctuation", m_lyricsHidePunctuation);
     settings->setValue("overlay/lyricsHotkey",
         QKeySequence(QKeyCombination(Qt::KeyboardModifiers(m_lyricsModifiers), Qt::Key(m_lyricsKey))).toString(QKeySequence::PortableText));
 }

@@ -32,11 +32,13 @@ Item {
         sourceComponent: AmbientBackground { boost: 2.0 }
     }
 
-    // The cover itself, huge and blurred, behind everything: the view takes on the record's colours
+    // The cover itself, huge and blurred, behind everything: the view takes on the record's colours.
+    // Faint by default; with "Blurred cover in full screen" (Settings) it fills the background.
     Loader {
         anchors.fill: parent
         active: root.built
         sourceComponent: Item {
+            id: washLayer
             clip: true
             opacity: 1 - root.enter
             ArtCover {
@@ -52,21 +54,25 @@ Item {
                 source: Player.cover
                 visible: false
             }
+            property real full: Theme.immersiveCover ? 1 : 0
+            Behavior on full { NumberAnimation { duration: Theme.ms(600); easing.type: Easing.InOutCubic } }
             MultiEffect {
                 anchors.fill: wash
                 source: wash
                 blurEnabled: true
                 blur: 1.0
                 blurMax: 64
-                saturation: 0.35
-                opacity: 0.55
+                saturation: 0.35 + 0.45 * washLayer.full
+                opacity: 0.55 + 0.45 * washLayer.full
             }
+            // Darkening for the text on top: lighter over the full cover, still deepest at the bottom
+            // where the controls and the visualizer sit.
             Rectangle {
                 anchors.fill: parent
                 gradient: Gradient {
-                    GradientStop { position: 0.0; color: Theme.alpha(Theme.bg, 0.55) }
-                    GradientStop { position: 0.55; color: Theme.alpha(Theme.bg, 0.68) }
-                    GradientStop { position: 1.0; color: Theme.alpha(Theme.bg, 0.92) }
+                    GradientStop { position: 0.0; color: Theme.alpha(Theme.bg, 0.55 - 0.1 * washLayer.full) }
+                    GradientStop { position: 0.55; color: Theme.alpha(Theme.bg, 0.68 - 0.16 * washLayer.full) }
+                    GradientStop { position: 1.0; color: Theme.alpha(Theme.bg, 0.92 - 0.12 * washLayer.full) }
                 }
             }
         }

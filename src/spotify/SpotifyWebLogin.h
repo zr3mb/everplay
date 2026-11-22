@@ -42,6 +42,8 @@ public:
     void start(const QString &profileDir);     // sign-in window, then the token
     void refresh(const QString &profileDir);   // only a new token from the signed-in profile
     void cancel();
+    // Stops whatever is running without reporting a failure (an interactive sign-in takes over).
+    void abort() { stopAll(); }
 
 signals:
     void runningChanged();

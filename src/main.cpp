@@ -94,11 +94,12 @@ int main(int argc, char *argv[])
     // The "Basic" style allows fully restyling the controls in QML.
     QQuickStyle::setStyle(QStringLiteral("Basic"));
 
-#ifdef Q_OS_WIN
-    QFont font(QStringLiteral("Segoe UI Variable Text"));
+    // Helvetica throughout; where it isn't installed, Arial (the same proportions) on Windows and
+    // the system's own Helvetica alias (Nimbus Sans, Liberation Sans…) elsewhere.
+    QFont font;
+    font.setFamilies({ QStringLiteral("Helvetica"), QStringLiteral("Arial") });
     font.setHintingPreference(QFont::PreferNoHinting);
     QGuiApplication::setFont(font);
-#endif
 
     // "everplay --overlay" / "--lyrics-overlay": the running Everplay opens or closes its overlay;
     // with none running, this one starts and opens it.

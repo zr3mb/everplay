@@ -186,7 +186,7 @@ def clean_tracks(raw, limit=MAX_TRACKS_PER_REQUEST):
 class Connection:
     def __init__(self, ws, user, device=None):
         self.ws = ws
-        self.user = {"id": user["id"], "name": user["name"]}   # what the rooms show of it
+        self.user = {"id": user["id"], "name": user["name"], "avatar": user.get("avatar", 0)}   # what the rooms show of it
         self.device = device
         self.room = None
         self.limiter = RateLimiter(40, 2.0)
@@ -276,7 +276,59 @@ async def update_me(request):
     user = request[USER]
     request.app[DB].rename_user(user["id"], name)
     user["name"] = name
+    await _profile_changed(request, user)
     return web.json_response({"user": user})
+
+
+MAX_AVATAR = 256 * 1024
+AVATAR_TYPES = ((b"\xff\xd8\xff", "image/jpeg"), (b"\x89PNG\r\n\x1a\n", "image/png"))
+
+
+@require_user
+async def set_avatar(request):
+    """The profile picture (a JPEG or PNG, as sent), shown to the people in the user's rooms and playlists."""
+    if request.content_length and request.content_length > MAX_AVATAR:
+        return error(413, "too_large", "the picture is too large")
+    image = await request.read()
+    if len(image) > MAX_AVATAR:
+        return error(413, "too_large", "the picture is too large")
+    kind = next((t for magic, t in AVATAR_TYPES if image.startswith(magic)), None)
+    if not kind:
+        return error(400, "bad_image", "a JPEG or PNG picture is expected")
+    user = request[USER]
+    user["avatar"] = request.app[DB].set_avatar(user["id"], image, kind)
+    await _profile_changed(request, user)
+    return web.json_response({"user": user})
+
+
+@require_user
+async def delete_avatar(request):
+    user = request[USER]
+    user["avatar"] = request.app[DB].set_avatar(user["id"], None)
+    await _profile_changed(request, user)
+    return web.json_response({"user": user})
+
+
+async def user_avatar(request):
+    row = request.app[DB].avatar(request.match_info["id"])
+    if not row:
+        return error(404, "not_found", "no picture")
+    # the address carries the version (?v=), so a changed picture is a new address
+    cache = "public, max-age=31536000, immutable" if request.query.get("v") == str(row["updated"]) else "no-cache"
+    return web.Response(body=row["image"], content_type=row["type"], headers={"Cache-Control": cache})
+
+
+async def _profile_changed(request, user):
+    """The user's name or picture changed: their open connections, rooms and shared playlists show the new one."""
+    hub = request.app[HUB]
+    for conn in list(hub.by_user.get(user["id"], ())):
+        conn.user["name"] = user["name"]
+        conn.user["avatar"] = user.get("avatar", 0)
+    for room in list(request.app[ROOMS].rooms.values()):
+        if room.update_member(user):
+            await hub.broadcast_room(room)
+    for playlist_id in request.app[DB].touch_playlists_of(user["id"]):
+        await hub.playlist_changed(playlist_id)
 
 
 @require_user
@@ -1189,6 +1241,9 @@ def create_app(config):
     r.add_get(f"{API}/me", me)
     r.add_patch(f"{API}/me", update_me)
     r.add_delete(f"{API}/me", delete_me)
+    r.add_put(f"{API}/me/avatar", set_avatar)
+    r.add_delete(f"{API}/me/avatar", delete_avatar)
+    r.add_get(f"{API}/users/{{id}}/avatar", user_avatar)
     r.add_post(f"{API}/shares", create_share)
     r.add_get(f"{API}/shares/{{code}}", get_share)
     r.add_get(f"{API}/playlists", list_playlists)

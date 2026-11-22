@@ -51,6 +51,8 @@ class GameOverlay : public QObject
     Q_PROPERTY(double lyricsDimming READ lyricsDimming WRITE setLyricsDimming NOTIFY settingsChanged)
     Q_PROPERTY(QString lyricsMode READ lyricsMode WRITE setLyricsMode NOTIFY settingsChanged)
     Q_PROPERTY(QString lyricsPosition READ lyricsPosition WRITE setLyricsPosition NOTIFY settingsChanged)
+    Q_PROPERTY(bool lyricsHideNotes READ lyricsHideNotes WRITE setLyricsHideNotes NOTIFY settingsChanged)
+    Q_PROPERTY(bool lyricsHidePunctuation READ lyricsHidePunctuation WRITE setLyricsHidePunctuation NOTIFY settingsChanged)
     Q_PROPERTY(QString lyricsHotkey READ lyricsHotkey NOTIFY settingsChanged)
     Q_PROPERTY(bool lyricsHotkeyTaken READ lyricsHotkeyTaken NOTIFY settingsChanged)
 
@@ -87,6 +89,10 @@ public:
     void setLyricsMode(const QString &mode);
     QString lyricsPosition() const { return m_lyricsPosition; }
     void setLyricsPosition(const QString &position);
+    bool lyricsHideNotes() const { return m_lyricsHideNotes; }
+    void setLyricsHideNotes(bool on);
+    bool lyricsHidePunctuation() const { return m_lyricsHidePunctuation; }
+    void setLyricsHidePunctuation(bool on);
     QString lyricsHotkey() const;
     bool lyricsHotkeyTaken() const { return m_lyricsHotkeyTaken; }
 
@@ -157,6 +163,8 @@ private:
     double m_lyricsDimming = 0.20;
     QString m_lyricsMode = QStringLiteral("karaoke");
     QString m_lyricsPosition = QStringLiteral("bottom");
+    bool m_lyricsHideNotes = false;
+    bool m_lyricsHidePunctuation = false;
     int m_lyricsKey = 0;
     int m_lyricsModifiers = 0;
     bool m_lyricsHotkeyTaken = false;

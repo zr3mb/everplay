@@ -5,12 +5,14 @@
 #include "ListeningHistory.h"
 #include "LibraryScanner.h"
 #include "PlayerController.h"
+#include "Profile.h"
 #include "soundcloud/SoundCloudService.h"
 #include "spotify/SpotifyService.h"
 #include "youtube/YouTubeService.h"
 #include "youtube/YtCookies.h"
 #include "youtube/YtMusicApi.h"
 
+#include <QBuffer>
 #include <QClipboard>
 #include <QCoreApplication>
 #include <QCryptographicHash>
@@ -18,6 +20,7 @@
 #include <QDir>
 #include <QFile>
 #include <QGuiApplication>
+#include <QImage>
 #include <QJSEngine>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -181,6 +184,15 @@ OnlineService::OnlineService(QObject *parent)
     m_orgTimer.setInterval(1'500);
     connect(&m_orgTimer, &QTimer::timeout, this, &OnlineService::pushOrganizer);
 
+    // The profile (Profile) is what the others see of you in rooms and shared playlists: its name is the
+    // account's name, its picture goes to the server. A name set here before the profile existed carries over.
+    Profile *profile = Profile::instance();
+    if (profile->name().isEmpty() && settings->contains("online/name"))
+        profile->setName(m_name);
+    connect(profile, &Profile::changed, this, &OnlineService::syncProfile);
+    connect(this, &OnlineService::accountChanged, this, &OnlineService::syncProfile);
+    QTimer::singleShot(0, this, &OnlineService::syncProfile);
+
     connect(&m_ws, &QWebSocket::connected, this, [this] {
         m_connected = true;
         m_backoff = 2;
@@ -268,6 +280,7 @@ void OnlineService::setDisplayName(const QString &name)
         return;
     m_name = clean;
     AppPaths::settings()->setValue("online/name", clean);
+    Profile::instance()->setName(clean);   // the same name in the profile
     emit settingsChanged();
     if (registered()) {
         request("PATCH", QStringLiteral("/me"), { { "name", clean } }, [this](const QJsonObject &, const QString &error) {
@@ -275,6 +288,50 @@ void OnlineService::setDisplayName(const QString &name)
                 emit notice(tr("Couldn't change the name: %1").arg(error), QStringLiteral("close"));
         });
     }
+}
+
+void OnlineService::syncProfile()
+{
+    Profile *profile = Profile::instance();
+    if (!profile->name().isEmpty())
+        setDisplayName(profile->name());
+    if (!registered() || m_avatarBusy)
+        return;
+    // What went up last for this account: its id and the picture's file name (a new picture is a new file).
+    const QString file = profile->picture().isEmpty() ? QString() : profile->picture().fileName();
+    const QString key = m_userId + QLatin1Char('|') + file;
+    const QString sent = AppPaths::settings()->value("online/avatarSent").toString();
+    if (sent == key)
+        return;
+    // No picture here and none sent from here: the account may have one from another device, which stays.
+    if (file.isEmpty() && !sent.startsWith(m_userId + QLatin1Char('|')))
+        return;
+    const auto finished = [this, key](const QJsonObject &, const QString &error) {
+        m_avatarBusy = false;
+        if (!error.isEmpty()) {
+            qWarning().noquote() << "online: profile picture:" << error;
+            return;
+        }
+        AppPaths::settings()->setValue("online/avatarSent", key);
+        syncProfile();   // the picture may have changed again meanwhile
+    };
+    m_avatarBusy = true;
+    if (file.isEmpty()) {
+        request("DELETE", QStringLiteral("/me/avatar"), {}, finished);
+        return;
+    }
+    // Small enough for the rooms' lists: 256 px, as a JPEG.
+    QImage image(profile->picture().toLocalFile());
+    if (image.isNull()) {
+        m_avatarBusy = false;
+        return;
+    }
+    image = image.scaled(256, 256, Qt::KeepAspectRatio, Qt::SmoothTransformation).convertToFormat(QImage::Format_RGB32);
+    QByteArray jpeg;
+    QBuffer buffer(&jpeg);
+    buffer.open(QIODevice::WriteOnly);
+    image.save(&buffer, "JPEG", 88);
+    send("PUT", QStringLiteral("/me/avatar"), jpeg, "image/jpeg", finished);
 }
 
 // ---- account and requests ---------------------------------------------------------
@@ -1007,9 +1064,15 @@ void OnlineService::buildRoomView()
     for (const QJsonValue &v : m_roomState.value("members").toArray()) {
         const QJsonObject m = v.toObject();
         const QString id = m.value("id").toString();
+        // The picture's address carries its version; your own comes from this computer, so it shows at once.
+        const qint64 avatar = m.value("avatar").toVariant().toLongLong();
+        const QUrl own = Profile::instance()->picture();
+        const QString picture = id == m_userId && !own.isEmpty() ? own.toString()
+            : avatar > 0 ? m_server + QStringLiteral("/api/v1/users/") + id + QStringLiteral("/avatar?v=") + QString::number(avatar)
+                         : QString();
         members << QVariantMap { { "id", id }, { "name", m.value("name").toString() },
                                  { "online", m.value("online").toBool() }, { "host", id == hostId },
-                                 { "me", id == m_userId } };
+                                 { "me", id == m_userId }, { "avatar", picture } };
     }
     const bool finished = m_roomState.value("finished").toBool();
     const TrackModel *model = Library::instance()->tracks();

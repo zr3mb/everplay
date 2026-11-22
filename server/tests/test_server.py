@@ -62,6 +62,68 @@ class ServerTest(AioHTTPTestCase):
             if condition(room):
                 return room
 
+    # ---- profiles ---------------------------------------------------------
+
+    async def test_profile_picture_and_name(self):
+        a, user_a = await self.register("Ala")
+        b, _ = await self.register("Bob")
+        self.assertEqual(user_a["avatar"], 0)
+        r = await self.client.post("/api/v1/playlists", json={"name": "Ours", "tracks": [YT]}, headers=self.auth(a))
+        p = await r.json()
+        await self.client.post(f"/api/v1/playlists/{p['id']}/join", headers=self.auth(b))
+        wa, wb = await self.ws(a), await self.ws(b)
+        await wa.send_json({"type": "room.create", "name": "Friday", "mode": "open"})
+        code = (await self.next_of(wa, "room"))["room"]["code"]
+        await wb.send_json({"type": "room.join", "code": code})
+        await self.next_of(wb, "room")
+
+        # a picture: the room and the playlist show it, and it's served at an address with its version
+        jpeg = b"\xff\xd8\xff\xe0" + b"x" * 100
+        r = await self.client.put("/api/v1/me/avatar", data=jpeg, headers=self.auth(a))
+        self.assertEqual(r.status, 200)
+        version = (await r.json())["user"]["avatar"]
+        self.assertGreater(version, 0)
+        room = await self.room_where(wb, lambda room: any(m["avatar"] == version for m in room["members"]))
+        self.assertEqual([m["name"] for m in room["members"] if m["avatar"]], ["Ala"])
+        self.assertEqual((await self.next_of(wb, "playlist"))["id"], p["id"])
+        got = await (await self.client.get(f"/api/v1/playlists/{p['id']}", headers=self.auth(b))).json()
+        self.assertEqual(got["owner"]["avatar"], version)
+        self.assertEqual([m["avatar"] for m in got["members"]], [version, 0])
+        r = await self.client.get(f"/api/v1/users/{user_a['id']}/avatar?v={version}")
+        self.assertEqual((r.status, r.content_type, await r.read()), (200, "image/jpeg", jpeg))
+        self.assertIn("immutable", r.headers["Cache-Control"])
+        me = await (await self.client.get("/api/v1/me", headers=self.auth(a))).json()
+        self.assertEqual(me["user"]["avatar"], version)
+
+        # a new name reaches the room and the playlist too
+        r = await self.client.patch("/api/v1/me", json={"name": "Ala K."}, headers=self.auth(a))
+        self.assertEqual((await r.json())["user"]["name"], "Ala K.")
+        room = await self.room_where(wb, lambda room: any(m["name"] == "Ala K." for m in room["members"]))
+        self.assertEqual(room["members"][0]["avatar"], version)
+        got = await (await self.client.get(f"/api/v1/playlists/{p['id']}", headers=self.auth(b))).json()
+        self.assertEqual(got["owner"]["name"], "Ala K.")
+
+        # only pictures, not too large; removing it
+        r = await self.client.put("/api/v1/me/avatar", data=b"<svg/>", headers=self.auth(a))
+        self.assertEqual((await r.json())["error"], "bad_image")
+        r = await self.client.put("/api/v1/me/avatar", data=jpeg + b"x" * 256 * 1024, headers=self.auth(a))
+        self.assertEqual(r.status, 413)
+        r = await self.client.delete("/api/v1/me/avatar", headers=self.auth(a))
+        self.assertEqual((await r.json())["user"]["avatar"], 0)
+        await self.room_where(wb, lambda room: all(m["avatar"] == 0 for m in room["members"]))
+        self.assertEqual((await self.client.get(f"/api/v1/users/{user_a['id']}/avatar")).status, 404)
+        await wa.close()
+        await wb.close()
+
+        # a connection opened after the picture was set brings it into the room it makes
+        r = await self.client.put("/api/v1/me/avatar", data=jpeg, headers=self.auth(b))
+        version = (await r.json())["user"]["avatar"]
+        wb = await self.ws(b)
+        await wb.send_json({"type": "room.create", "name": "Later", "mode": "open"})
+        room = (await self.next_of(wb, "room"))["room"]
+        self.assertEqual(room["members"][0]["avatar"], version)
+        await wb.close()
+
     # ---- playlist covers ------------------------------------------------
 
     async def test_playlist_cover(self):

@@ -110,35 +110,30 @@ Item {
         anchors { right: parent.right; verticalCenter: parent.verticalCenter }
         spacing: 12
 
-        // Profile: the avatar alone, ringed in the accent on hover
+        // Profile: the avatar alone, ringed in the accent on hover; opens the profile box
         Rectangle {
+            id: profileButton
             anchors.verticalCenter: parent.verticalCenter
             width: 40; height: 40; radius: 20
             color: "transparent"
             border.width: 2
-            border.color: profileMouse.containsMouse ? Theme.accent : Theme.hairline
+            border.color: profileMouse.containsMouse || profilePopup.opened ? Theme.accent : Theme.hairline
             Behavior on border.color { ColorAnimation { duration: Theme.normal } }
-            Rectangle {
+            ProfileAvatar {
                 anchors.centerIn: parent
-                width: 32; height: 32; radius: 16
-                gradient: Gradient {
-                    orientation: Gradient.Horizontal
-                    GradientStop { position: 0; color: Theme.accent }
-                    GradientStop { position: 1; color: Theme.accent2 }
-                }
-                Icon {
-                    anchors.centerIn: parent
-                    name: "person"
-                    size: 18
-                    color: Theme.onAccent
-                }
+                width: 32; height: 32
             }
             MouseArea {
                 id: profileMouse
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onClicked: Nav.navigate("settings")
+                onClicked: profilePopup.opened ? profilePopup.close() : profilePopup.open()
+            }
+            ProfilePopup {
+                id: profilePopup
+                x: profileButton.width - width
+                y: profileButton.height + 10
             }
         }
 
@@ -148,4 +143,8 @@ Item {
     }
 
     Shortcut { sequence: "Ctrl+K"; onActivated: Nav.openSearch() }
+    Connections {
+        target: Nav
+        function onProfileRequested() { profilePopup.open() }
+    }
 }

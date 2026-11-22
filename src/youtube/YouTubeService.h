@@ -75,6 +75,8 @@ public:
     qreal engineProgress() const { return m_resolver.downloadProgress(); }
 
     Q_INVOKABLE void login();
+    // Signs in again through the browser while signed in (an expired session), keeping the chosen channel.
+    Q_INVOKABLE void relogin();
     Q_INVOKABLE void cancelLogin();
     Q_INVOKABLE void loginWithCookies(const QString &cookieHeader);
     // Android: the cookies of the in-app sign-in page (qml/mobile/WebLogin.qml); empty elsewhere.
@@ -157,7 +159,7 @@ signals:
 private:
     explicit YouTubeService(QObject *parent = nullptr);
 
-    void useCookies(const YtCookies &cookies, bool fresh);
+    void useCookies(const YtCookies &cookies, bool fresh, bool keepIdentity = false);
     void syncStep(const QString &error);
     void storeTracks(const QList<Track> &tracks, bool transient);
     void publishResults(const QStringList &ids);
@@ -173,6 +175,7 @@ private:
     YtMusicApi m_api;
     StreamResolver m_resolver;
     QString m_browserName;
+    bool m_relogging = false;
 
     YtMusicApi::Account m_account;
     QList<YtMusicApi::Identity> m_identities;

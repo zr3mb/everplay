@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(Everplay VERSION 0.31.3 LANGUAGES CXX)
+project(Everplay VERSION 0.32.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -47,6 +47,7 @@ qt_add_qml_module(Everplay
         src/AppPaths.h
         src/TagLibPath.h
         src/Prefs.h             src/Prefs.cpp
+        src/Profile.h           src/Profile.cpp
         src/MemoryTrim.h        src/MemoryTrim.cpp
         src/TrackModel.h        src/TrackModel.cpp
         src/LibraryScanner.h    src/LibraryScanner.cpp
@@ -108,6 +109,8 @@ qt_add_qml_module(Everplay
         qml/components/MatchDialog.qml
         qml/components/PasswordDialog.qml
         qml/components/AccountDialog.qml
+        qml/components/ProfileAvatar.qml
+        qml/components/ProfilePopup.qml
         qml/components/PlaylistFolderDialog.qml
         qml/components/QueueDrawer.qml
         qml/components/RoomAddDialog.qml
